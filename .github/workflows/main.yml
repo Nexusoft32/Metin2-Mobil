@@ -23,19 +23,15 @@ jobs:
       run: |
         yes | sudo $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-    - name: Gradle Kur
+    - name: Gradle 8.13 Kur
       uses: gradle/actions/setup-gradle@v3
       with:
-        gradle-version: '8.5'
+        gradle-version: '8.13'
 
     - name: Gereksiz Yerel Ayarlari Temizle ve APK Derle
       working-directory: ./Cross Platform/opengl/android
       run: |
         rm -f local.properties
-        echo "=== PROJE AYARLARI ==="
-        cat build.gradle || true
-        cat gradle/wrapper/gradle-wrapper.properties || true
-        echo "======================"
         gradle assembleDebug --stacktrace
 
     - name: Uretilen APK Dosyasini Yukle
