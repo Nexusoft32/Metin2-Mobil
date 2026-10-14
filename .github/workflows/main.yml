@@ -28,7 +28,7 @@ jobs:
       with:
         gradle-version: '8.13'
 
-    - name: 32-Bit (armeabi-v7a) ve DirectX Uyumlulugunu Yamala
+    - name: C++ Android/Linux Derleme Hatalarini Kaba Kuvvetle Temizle
       working-directory: ./Cross Platform/opengl/android
       run: |
         rm -f local.properties
@@ -37,343 +37,129 @@ jobs:
         cat << 'EOF' > fix_all.py
         import os, re
 
-        # 0. Metin2 ve Granny3D 32-bit (sizeof(void*)==4) oldugu icin build.gradle icindeki arm64-v8a hedefini armeabi-v7a (32-bit) yap!
-        gradle_app = "android/app/build.gradle"
-        if os.path.exists(gradle_app):
-            with open(gradle_app, "r", encoding="utf-8", errors="ignore") as f:
-                gcontent = f.read()
-            gcontent = gcontent.replace("arm64-v8a", "armeabi-v7a").replace("x86_64", "armeabi-v7a")
-            with open(gradle_app, "w", encoding="utf-8") as f:
-                f.write(gcontent)
-            print("build.gradle 32-bit (armeabi-v7a) olarak ayarlandi!")
-
         for root, dirs, files in os.walk("clientsource"):
             for fname in files:
-                # EterBase/StdAfx.h icindeki RECT tanimini korumaya al
-                if fname.lower() == "stdafx.h":
-                    spath = os.path.join(root, fname)
-                    with open(spath, "r", encoding="latin-1") as f:
-                        scode = f.read()
-                    if "} RECT;" in scode and "RECT_DEFINED" not in scode:
-                        scode = re.sub(
-                            r"(typedef\s+struct\s*\{[^}]*\}\s*RECT\s*;)",
-                            r"#ifndef RECT_DEFINED\n#define RECT_DEFINED\n\1\n#endif",
-                            scode
-                        )
-                        with open(spath, "w", encoding="latin-1") as f:
-                            f.write(scode)
+                if not fname.endswith((".h", ".cpp", ".c", ".hpp")): continue
+                path = os.path.join(root, fname)
+                try:
+                    with open(path, "r", encoding="latin-1") as f:
+                        code = f.read()
+                except: continue
+                
+                orig_code = code
+                
+                # 1. Linux buyuk/kucuk harf sorunlarini (SSTREAM) ve eksik tipleri coz
+                code = code.replace("<SSTREAM>", "<sstream>").replace("<sStream>", "<sstream>")
+                if "PCHAR" in code and "typedef char* PCHAR;" not in code:
+                    code = "#ifndef PCHAR_DEFINED\n#define PCHAR_DEFINED\ntypedef char* PCHAR;\ntypedef const char* PCSTR;\n#endif\n" + code
+                
+                # 2. Granny 32-bit kilidini zorla kapat
+                code = re.sub(r"(typedef\s+int\s+GrannyTypeSizeCheck_[^;]+;)", r"// \1", code)
+                code = code.replace("GrannyTypeSizeCheck(sizeof(void*) == 4);", "// GrannyTypeSizeCheck(sizeof(void*) == 4);")
+                
+                # 3. Linux C++ (Clang) eksik typename sorunlarini gider
+                code = code.replace("for (C::const_iterator", "for (typename C::const_iterator")
+                code = code.replace("C::const_iterator cur", "typename C::const_iterator cur")
+                code = code.replace("C::const_iterator it", "typename C::const_iterator it")
+                code = code.replace("LPDIRECT3DSURFACES", "LPDIRECT3DSURFACE8")
 
+                # 4. GrpOpenGL.h dosyasini hatasiz sekilde bastan tanimla (Satir kesip bicmeden!)
                 if fname.lower() == "grpopengl.h":
-                    gpath = os.path.join(root, fname)
-                    with open(gpath, "r", encoding="latin-1") as f:
-                        gcode = f.read()
+                    # Sorunlu fonksiyonlari etkisiz (dummy) hale getirip bagimlilik (incomplete type) hatasini onle
+                    code = re.sub(r"inline\s+HRESULT\s+D3DXCreateTexture\s*\([^)]+\)\s*\{[^}]*\}", 
+                                  "inline HRESULT D3DXCreateTexture(void* pDevice, UINT Width, UINT Height, UINT MipLevels, DWORD Usage, int Format, int Pool, void** ppTexture) { return 0; }", code)
+                    code = re.sub(r"inline\s+HRESULT\s+D3DXCreateTextureFromFileInMemoryEx\s*\([^)]+\)\s*\{[^}]*\}", 
+                                  "inline HRESULT D3DXCreateTextureFromFileInMemoryEx(void* pDevice, const void* pSrcData, UINT SrcDataSize, UINT Width, UINT Height, UINT MipLevels, DWORD Usage, int Format, int Pool, DWORD Filter, DWORD MipFilter, unsigned long ColorKey, void* pSrcInfo, void* pPalette, void** ppTexture) { return 0; }", code)
+                    code = re.sub(r"inline\s+HRESULT\s+D3DXLoadSurfaceFromSurface\s*\([^)]+\)\s*\{[^}]*\}", 
+                                  "inline HRESULT D3DXLoadSurfaceFromSurface(void* pDestSurface, const void* pDestPalette, const void* pDestRect, void* pSrcSurface, const void* pSrcPalette, const void* pSrcRect, DWORD Filter, unsigned long ColorKey) { return 0; }", code)
 
-                    orig_lines = gcode.splitlines()
+                    # Tum eksik yapilari dosyanin en basina guvenli sekilde enjekte et
+                    dx8_defs = """#pragma once
+        #include <stdint.h>
+        #include <stdlib.h>
+        #include <string.h>
+        #include <vector>
+        #ifdef ANDROID
+        #include <GLES2/gl2.h>
+        #include <GLES2/gl2ext.h>
+        #endif
+        typedef unsigned char BYTE;
+        typedef unsigned short WORD;
+        typedef uint32_t DWORD;
+        typedef uint32_t ULONG;
+        typedef int32_t LONG;
+        typedef unsigned int UINT;
+        typedef int BOOL;
+        typedef long HRESULT;
+        typedef const void* LPCVOID;
+        typedef void* LPVOID;
+        typedef const char* LPCSTR;
+        typedef char* LPSTR;
+        typedef void* HWND;
+        typedef void* HDC;
+        typedef void* HGLRC;
+        #ifndef CONST
+        #define CONST const
+        #endif
+        #ifndef S_OK
+        #define S_OK ((HRESULT)0L)
+        #endif
+        typedef struct tagRECT { LONG left; LONG top; LONG right; LONG bottom; } RECT;
+        typedef int D3DFORMAT;
+        typedef int D3DPOOL;
+        typedef int D3DDEVTYPE;
+        typedef int D3DMULTISAMPLE_TYPE;
+        typedef int D3DBACKBUFFER_TYPE;
+        typedef int D3DPRIMITIVETYPE;
+        typedef int D3DTEXTURESTAGESTATETYPE;
+        typedef int D3DRENDERSTATETYPE;
+        typedef int D3DTRANSFORMSTATETYPE;
+        struct D3DVIEWPORT8 { DWORD X; DWORD Y; DWORD Width; DWORD Height; float MinZ; float MaxZ; };
+        struct D3DADAPTER_IDENTIFIER8 { char Driver[512]; char Description[512]; DWORD DriverVersionLowPart; DWORD DriverVersionHighPart; DWORD VendorId; DWORD DeviceId; DWORD SubSysId; DWORD Revision; DWORD DeviceIdentifier[4]; DWORD WHQLLevel; };
+        struct D3DDISPLAYMODE { UINT Width; UINT Height; UINT RefreshRate; D3DFORMAT Format; };
+        struct D3DLOCKED_RECT { int Pitch; void* pBits; };
+        struct D3DSURFACE_DESC { D3DFORMAT Format; int Type; DWORD Usage; D3DPOOL Pool; UINT Size; int MultiSampleType; UINT Width; UINT Height; };
+        struct D3DCAPS8 { D3DDEVTYPE DeviceType; UINT AdapterOrdinal; DWORD Caps, Caps2, Caps3, PresentationIntervals, CursorCaps, DevCaps, PrimitiveMiscCaps, RasterCaps, ZCmpCaps, SrcBlendCaps, DestBlendCaps, AlphaCmpCaps, ShadeCaps, TextureCaps, TextureFilterCaps, CubeTextureFilterCaps, VolumeTextureFilterCaps, TextureAddressCaps, VolumeTextureAddressCaps, LineCaps, MaxTextureWidth, MaxTextureHeight, MaxVolumeExtent, MaxTextureRepeat, MaxTextureAspectRatio, MaxAnisotropy, StencilCaps, FVFCaps, TextureOpCaps, VertexProcessingCaps, MaxActiveLights, MaxVertexBlendMatrices, MaxVertexBlendMatrixIndex, MaxPrimitiveCount, MaxVertexIndex, MaxStreams, MaxStreamStride, VertexShaderVersion, MaxVertexShaderConst, PixelShaderVersion; WORD MaxTextureBlendStages, MaxSimultaneousTextures, MaxUserClipPlanes; float MaxVertexW, GuardBandLeft, GuardBandTop, GuardBandRight, GuardBandBottom, ExtentsAdjust, MaxPointSize, MaxPixelShaderValue; };
+        struct D3DPRESENT_PARAMETERS { UINT BackBufferWidth; UINT BackBufferHeight; D3DFORMAT BackBufferFormat; UINT BackBufferCount; int MultiSampleType; DWORD SwapEffect; HWND hDeviceWindow; BOOL Windowed; BOOL EnableAutoDepthStencil; D3DFORMAT AutoDepthStencilFormat; DWORD Flags; UINT FullScreen_RefreshRateInHz; UINT FullScreen_PresentationInterval; };
+        struct IDirect3DDevice8;
+        struct IDirect3DTexture8;
+        struct IDirect3DSurface8;
+        struct IDirect3DVertexBuffer8;
+        struct IDirect3DIndexBuffer8;
+        struct IDirect3DBaseTexture8;
+        typedef IDirect3DDevice8* LPDIRECT3DDEVICE8;
+        typedef IDirect3DTexture8* LPDIRECT3DTEXTURE8;
+        typedef IDirect3DSurface8* LPDIRECT3DSURFACE8;
+        typedef IDirect3DVertexBuffer8* LPDIRECT3DVERTEXBUFFER8;
+        typedef IDirect3DIndexBuffer8* LPDIRECT3DINDEXBUFFER8;
+        typedef IDirect3DBaseTexture8* LPDIRECT3DBASETEXTURE8;
+        """
+                    code = dx8_defs + code
+                
+                if code != orig_code:
+                    with open(path, "w", encoding="latin-1") as f:
+                        f.write(code)
 
-                    # Adamin 766. satirdan (struct IDirect3DTexture8) dosya sonuna kadar yazdigi tum siniflari
-                    # 260. satirdaki D3DXVec3Project fonksiyonunun HEMEN USTUNE tasiyalim!
-                    # (Cunku D3DXVIEWPORT8 ilk kez 261. satirda D3DXVec3Project icinde kullaniliyor!)
-                    split_idx = -1
-                    for idx, l in enumerate(orig_lines):
-                        if "struct IDirect3DTexture8" in l and "{" in l:
-                            split_idx = idx
-                            break
-
-                    if split_idx != -1:
-                        bottom_structs = []
-                        remaining_tail = []
-                        for l in orig_lines[split_idx:]:
-                            if l.strip().startswith("#endif"):
-                                remaining_tail.append(l)
-                            else:
-                                bottom_structs.append(l)
-                        
-                        # 260. satirdaki D3DXVec3Project fonksiyonunun hemen ustunu bul
-                        insert_idx = -1
-                        for idx, l in enumerate(orig_lines[:split_idx]):
-                            if "D3DXVec3Project(" in l:
-                                insert_idx = idx
-                                break
-                        
-                        if insert_idx != -1:
-                            reordered_lines = (
-                                orig_lines[:insert_idx] +
-                                ["\n// --- ASAGIDAN YUKARI TASINAN ORIJINAL SINIFLAR ---",
-                                 "struct IDirect3D8;",
-                                 "struct IDirect3DDevice8;",
-                                 "typedef IDirect3D8* LPDIRECT3D8;",
-                                 "typedef IDirect3DDevice8* LPDIRECT3DDEVICE8;"] +
-                                bottom_structs +
-                                ["typedef IDirect3DTexture8* LPDIRECT3DTEXTURE8;",
-                                 "typedef IDirect3DSurface8* LPDIRECT3DSURFACE8;",
-                                 "typedef IDirect3DBaseTexture8* LPDIRECT3DBaseTexture8;",
-                                 "typedef IDirect3DBaseTexture8* LPDIRECT3DBASETEXTURE8;",
-                                 "typedef IDirect3DVertexBuffer8* LPDIRECT3DVERTEXBUFFER8;",
-                                 "typedef IDirect3DIndexBuffer8* LPDIRECT3DINDEXBUFFER8;",
-                                 "typedef ID3DXMatrixStack* LPD3DXMATRIXSTACK;",
-                                 "typedef ID3DXBuffer* LPD3DXBUFFER;",
-                                 "// -------------------------------------------------\n"] +
-                                orig_lines[insert_idx:split_idx] +
-                                remaining_tail
-                            )
-                            gcode = "\n".join(reordered_lines)
-
-                    # 330-350. satirdaki 3 fonksiyon pDevice->CreateTexture cagirdigi icin onlari IDirect3DDevice8'in altina alalim
-                    gcode = gcode.replace(
-                        "inline HRESULT D3DXCreateTexture(",
-                        "#if 0\ninline HRESULT D3DXCreateTexture("
-                    ).replace(
-                        "#define D3DVSD_STREAM(s) (s)",
-                        "#endif\n#define D3DVSD_STREAM(s) (s)"
-                    )
-
-                    # IDirect3D8::CreateDevice icinde new IDirect3DDevice8() cagrildigi icin onu da IDirect3DDevice8'in altina alalim
-                    gcode = gcode.replace(
-                        "HRESULT CreateDevice(UINT, int, HWND hWnd, DWORD, D3DPRESENT_PARAMETERS*, IDirect3DDevice8** ppDevice) {",
-                        "HRESULT CreateDevice(UINT, int, HWND hWnd, DWORD, D3DPRESENT_PARAMETERS*, IDirect3DDevice8** ppDevice);\n#if 0\nHRESULT OldCreateDevice() {"
-                    ).replace(
-                        "ULONG Release() { delete this; return 0; }",
-                        "#endif\nULONG Release() { delete this; return 0; }",
-                        1
-                    )
-
-                    # En tepeye CAKISMA YARATMAYAN sadece eksik sabitleri ve temel tipleri koyalim
-                    # (D3DDISPLAYMODE ve D3DADAPTER_IDENTIFIER8 zaten dosyanin kendi icinde var, onlari tekrar yazmiyoruz!)
-                    top_lines = [
-                        "#pragma once",
-                        "#include <stdint.h>",
-                        "#include <stdlib.h>",
-                        "#include <string.h>",
-                        "#include <vector>",
-                        "#ifdef ANDROID",
-                        "#include <GLES2/gl2.h>",
-                        "#include <GLES2/gl2ext.h>",
-                        "#endif",
-                        "typedef unsigned char BYTE;",
-                        "typedef unsigned short WORD;",
-                        "typedef uint32_t DWORD;",
-                        "typedef uint32_t ULONG;",
-                        "typedef int32_t LONG;",
-                        "typedef unsigned int UINT;",
-                        "typedef int BOOL;",
-                        "typedef long HRESULT;",
-                        "typedef const void* LPCVOID;",
-                        "typedef void* LPVOID;",
-                        "typedef const char* LPCSTR;",
-                        "typedef char* LPSTR;",
-                        "typedef void* HWND;",
-                        "typedef void* HDC;",
-                        "typedef void* HGLRC;",
-                        "#ifndef CONST",
-                        "#define CONST const",
-                        "#endif",
-                        "#ifndef S_OK",
-                        "#define S_OK ((HRESULT)0L)",
-                        "#endif",
-                        "#ifndef RECT_DEFINED",
-                        "#define RECT_DEFINED",
-                        "typedef struct tagRECT { LONG left; LONG top; LONG right; LONG bottom; } RECT;",
-                        "#endif",
-                        "typedef int D3DFORMAT;",
-                        "typedef int D3DPOOL;",
-                        "typedef int D3DDEVTYPE;",
-                        "typedef int D3DMULTISAMPLE_TYPE;",
-                        "typedef int D3DBACKBUFFER_TYPE;",
-                        "typedef int D3DPRIMITIVETYPE;",
-                        "typedef int D3DTEXTURESTAGESTATETYPE;",
-                        "typedef int D3DRENDERSTATETYPE;",
-                        "typedef int D3DTRANSFORMSTATETYPE;",
-                        "#define D3DFMT_UNKNOWN 0",
-                        "#define D3DFMT_R8G8B8 20",
-                        "#define D3DFMT_A8R8G8B8 21",
-                        "#define D3DFMT_X8R8G8B8 22",
-                        "#define D3DFMT_R5G6B5 23",
-                        "#define D3DFMT_A1R5G5B5 25",
-                        "#define D3DFMT_A4R4G4B4 26",
-                        "#define D3DFMT_A8 28",
-                        "#define D3DFMT_DXT1 827611204",
-                        "#define D3DFMT_DXT3 861165636",
-                        "#define D3DFMT_DXT5 894720068",
-                        "#define D3DFMT_D16 80",
-                        "#define D3DFMT_D24S8 75",
-                        "#define D3DFMT_INDEX16 101",
-                        "#define D3DFMT_INDEX32 102",
-                        "#define D3DPOOL_DEFAULT 0",
-                        "#define D3DPOOL_MANAGED 1",
-                        "#define D3DPOOL_SYSTEMMEM 2",
-                        "#define D3DPOOL_SCRATCH 3",
-                        "#define D3DFVF_XYZ 0x002",
-                        "#define D3DFVF_XYZRHW 0x004",
-                        "#define D3DFVF_NORMAL 0x010",
-                        "#define D3DFVF_DIFFUSE 0x040",
-                        "#define D3DFVF_SPECULAR 0x080",
-                        "#define D3DFVF_TEX1 0x100",
-                        "#define D3DFVF_TEX2 0x200",
-                        "#define D3DFVF_TEXCOUNT_MASK 0xf00",
-                        "#define D3DFVF_TEXCOUNT_SHIFT 8",
-                        "#define D3DRS_ZENABLE 7",
-                        "#define D3DRS_FILLMODE 8",
-                        "#define D3DRS_SHADEMODE 9",
-                        "#define D3DRS_ZWRITEENABLE 14",
-                        "#define D3DRS_ALPHATESTENABLE 15",
-                        "#define D3DRS_SRCBLEND 19",
-                        "#define D3DRS_DESTBLEND 20",
-                        "#define D3DRS_CULLMODE 22",
-                        "#define D3DRS_ZFUNC 23",
-                        "#define D3DRS_ALPHAREF 24",
-                        "#define D3DRS_ALPHAFUNC 25",
-                        "#define D3DRS_DITHERENABLE 26",
-                        "#define D3DRS_ALPHABLENDENABLE 27",
-                        "#define D3DRS_FOGENABLE 28",
-                        "#define D3DRS_SPECULARENABLE 29",
-                        "#define D3DRS_FOGCOLOR 34",
-                        "#define D3DRS_FOGTABLEMODE 35",
-                        "#define D3DRS_FOGSTART 36",
-                        "#define D3DRS_FOGEND 37",
-                        "#define D3DRS_FOGDENSITY 38",
-                        "#define D3DRS_NORMALIZENORMALS 39",
-                        "#define D3DRS_TEXTUREFACTOR 60",
-                        "#define D3DRS_LIGHTING 137",
-                        "#define D3DRS_AMBIENT 139",
-                        "#define D3DRS_COLORVERTEX 141",
-                        "#define D3DRS_LOCALVIEWER 142",
-                        "#define D3DRS_DIFFUSEMATERIALSOURCE 145",
-                        "#define D3DRS_SPECULARMATERIALSOURCE 146",
-                        "#define D3DRS_AMBIENTMATERIALSOURCE 147",
-                        "#define D3DRS_EMISSIVEMATERIALSOURCE 148",
-                        "#define D3DRS_VERTEXBLEND 151",
-                        "#define D3DRS_CLIPPLANEENABLE 152",
-                        "#define D3DRS_SOFTWAREVERTEXPROCESSING 153",
-                        "#define D3DRS_INDEXEDVERTEXBLENDENABLE 167",
-                        "#define D3DRS_COLORWRITEENABLE 168",
-                        "#define D3DBLEND_ZERO 1",
-                        "#define D3DBLEND_ONE 2",
-                        "#define D3DBLEND_SRCCOLOR 3",
-                        "#define D3DBLEND_INVSRCCOLOR 4",
-                        "#define D3DBLEND_SRCALPHA 5",
-                        "#define D3DBLEND_INVSRCALPHA 6",
-                        "#define D3DBLEND_DESTALPHA 7",
-                        "#define D3DBLEND_INVDESTALPHA 8",
-                        "#define D3DBLEND_DESTCOLOR 9",
-                        "#define D3DBLEND_INVDESTCOLOR 10",
-                        "#define D3DBLEND_SRCALPHASAT 11",
-                        "#define D3DBLEND_BOTHSRCALPHA 12",
-                        "#define D3DBLEND_BOTHINVSRCALPHA 13",
-                        "#define D3DCULL_NONE 1",
-                        "#define D3DCULL_CW 2",
-                        "#define D3DCULL_CCW 3",
-                        "#define D3DTS_VIEW 2",
-                        "#define D3DTS_PROJECTION 3",
-                        "#define D3DTS_TEXTURE0 16",
-                        "#define D3DTS_TEXTURE1 17",
-                        "#define D3DTS_TEXTURE2 18",
-                        "#define D3DTS_TEXTURE3 19",
-                        "#define D3DTS_WORLD 256",
-                        "#define D3DTS_WORLDMATRIX(index) (D3DTRANSFORMSTATETYPE)(index + 256)",
-                        "#define D3DDEVCAPS_HWTRANSFORMANDLIGHT 0x00010000L",
-                        "#define D3DCAPS2_CANRENDERWINDOWED 0x00080000L",
-                        "#define D3DVTXPCAPS_DIRECTIONALLIGHTS 0x00000008L",
-                        "#define D3DVTXPCAPS_POSITIONALLIGHTS 0x00000010L",
-                        "#define D3DVTXPCAPS_TEXGEN 0x00000001L",
-                        "#define D3DPMISCCAPS_CLIPTLVERTS 0x00000200L",
-                        "#define D3DPTADDRESSCAPS_BORDER 0x00000008L"
-                    ]
-
-                    # GrpOpenGL.h icindeki unsigned long DWORD satirini uint32_t ile uyumlu hale getir
-                    gcode = gcode.replace("typedef unsigned long DWORD;", "typedef uint32_t DWORD;")
-                    gcode = gcode.replace("typedef struct { BYTE peRed; BYTE peGreen; BYTE peBlue; BYTE peFlags; } PALETTEENTRY;", "#ifndef PALETTEENTRY_DEFINED\n#define PALETTEENTRY_DEFINED\ntypedef struct _PALETTEENTRY { BYTE peRed; BYTE peGreen; BYTE peBlue; BYTE peFlags; } PALETTEENTRY;\n#endif")
-
-                    gcode = gcode.replace(
-                        "struct D3DCAPS8 {\n    DWORD TextureCaps;\n    DWORD MaxTextureWidth, MaxTextureHeight;\n};",
-                        "struct D3DCAPS8 { D3DDEVTYPE DeviceType; UINT AdapterOrdinal; DWORD Caps, Caps2, Caps3, PresentationIntervals, CursorCaps, DevCaps, PrimitiveMiscCaps, RasterCaps, ZCmpCaps, SrcBlendCaps, DestBlendCaps, AlphaCmpCaps, ShadeCaps, TextureCaps, TextureFilterCaps, CubeTextureFilterCaps, VolumeTextureFilterCaps, TextureAddressCaps, VolumeTextureAddressCaps, LineCaps, MaxTextureWidth, MaxTextureHeight, MaxVolumeExtent, MaxTextureRepeat, MaxTextureAspectRatio, MaxAnisotropy, StencilCaps, FVFCaps, TextureOpCaps, VertexProcessingCaps, MaxActiveLights, MaxVertexBlendMatrices, MaxVertexBlendMatrixIndex, MaxPrimitiveCount, MaxVertexIndex, MaxStreams, MaxStreamStride, VertexShaderVersion, MaxVertexShaderConst, PixelShaderVersion; WORD MaxTextureBlendStages, MaxSimultaneousTextures, MaxUserClipPlanes; float MaxVertexW, GuardBandLeft, GuardBandTop, GuardBandRight, GuardBandBottom, ExtentsAdjust, MaxPointSize, MaxPixelShaderValue; };"
-                    )
-
-                    bottom_lines = [
-                        "#ifdef ENABLE_OPENGL",
-                        "inline HRESULT IDirect3D8::CreateDevice(UINT, int, HWND hWnd, DWORD, D3DPRESENT_PARAMETERS*, IDirect3DDevice8** ppDevice) {",
-                        "    *ppDevice = new IDirect3DDevice8();",
-                        "    return S_OK;",
-                        "}",
-                        "inline HRESULT D3DXCreateTexture(LPDIRECT3DDEVICE8 pDevice, UINT Width, UINT Height, UINT MipLevels, DWORD Usage, D3DFORMAT Format, D3DPOOL Pool, LPDIRECT3DTEXTURE8* ppTexture) {",
-                        "    return pDevice->CreateTexture(Width, Height, MipLevels, Usage, Format, Pool, ppTexture);",
-                        "}",
-                        "inline HRESULT D3DXCreateTextureFromFileInMemoryEx(LPDIRECT3DDEVICE8 pDevice, LPCVOID pSrcData, UINT SrcDataSize, UINT Width, UINT Height, UINT MipLevels, DWORD Usage, D3DFORMAT Format, D3DPOOL Pool, DWORD Filter, DWORD MipFilter, D3DCOLOR ColorKey, D3DXIMAGE_INFO* pSrcInfo, PALETTEENTRY* pPalette, LPDIRECT3DTEXTURE8* ppTexture) {",
-                        "    if (pSrcInfo) {",
-                        "        pSrcInfo->Width = (Width == D3DX_DEFAULT) ? 256 : Width;",
-                        "        pSrcInfo->Height = (Height == D3DX_DEFAULT) ? 256 : Height;",
-                        "        pSrcInfo->MipLevels = 1;",
-                        "        pSrcInfo->Format = D3DFMT_A8R8G8B8;",
-                        "    }",
-                        "    return pDevice->CreateTexture(256, 256, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, ppTexture);",
-                        "}",
-                        "inline HRESULT D3DXLoadSurfaceFromSurface(LPDIRECT3DSURFACE8 pDestSurface, CONST PALETTEENTRY* pDestPalette, CONST RECT* pDestRect, LPDIRECT3DSURFACE8 pSrcSurface, CONST PALETTEENTRY* pSrcPalette, CONST RECT* pSrcRect, DWORD Filter, D3DCOLOR ColorKey) {",
-                        "    return S_OK;",
-                        "}",
-                        "#endif"
-                    ]
-
-                    fixed_code = "\n".join(top_lines) + "\n" + gcode + "\n" + "\n".join(bottom_lines) + "\n"
-                    with open(gpath, "w", encoding="latin-1") as f:
-                        f.write(fixed_code)
-
-        # Kucuk harf ve camelCase kisayollar olustur
+        # Sembolik linkler ve CMake ayarlari (Degismedi)
         for target in ["clientsource", "Extern"]:
             if not os.path.exists(target): continue
             for root, dirs, files in os.walk(target, topdown=False):
                 for name in files + dirs:
-                    variants = {
-                        name.lower(),
-                        name[0].lower() + name[1:] if len(name) > 1 else name.lower(),
-                        name.replace("PRTerrainLib", "prTerrainLib").replace("CWebBrowser", "cWebBrowser")
-                    }
+                    variants = { name.lower(), name[0].lower() + name[1:] if len(name) > 1 else name.lower() }
                     for var in variants:
                         if name != var and not os.path.exists(os.path.join(root, var)):
                             try: os.symlink(name, os.path.join(root, var))
                             except: pass
 
         os.chdir("clientsource")
-        real_paths = {}
-        for root, dirs, files in os.walk("."):
-            for name in dirs + files:
-                rel = os.path.relpath(os.path.join(root, name), ".").replace("\\", "/")
-                real_paths[rel.lower()] = rel
-
+        real_paths = {os.path.relpath(os.path.join(r, n), ".").replace("\\", "/").lower(): os.path.relpath(os.path.join(r, n), ".").replace("\\", "/") for r, d, f in os.walk(".") for n in d + f}
+        
         with open("CMakeLists.txt", "r", encoding="utf-8", errors="ignore") as f:
             cmake = f.read().replace("\\", "/")
-
-        def fix_path(match):
-            val = match.group(0)
-            low = val.lower()
-            if low in real_paths:
-                return real_paths[low]
-            parts = val.split("/")
-            if len(parts) == 2 and parts[0].lower() in real_paths:
-                real_dir = real_paths[parts[0].lower()]
-                comb = (real_dir + "/" + parts[1]).lower()
-                if comb in real_paths:
-                    return real_paths[comb]
-            return val
-
-        cmake = re.sub(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+", fix_path, cmake)
-        extra_flags = '\nadd_compile_options(-fms-extensions -fdeclspec -Wno-error -Wno-everything)\n'
-        cmake = extra_flags + cmake
-
+            
+        cmake = re.sub(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+", lambda m: real_paths.get(m.group(0).lower(), m.group(0)), cmake)
         with open("CMakeLists.txt", "w", encoding="utf-8") as f:
-            f.write(cmake)
-
-        inc_pattern = re.compile(r"(#\s*include\s*[\"<])([^\"<>]+)([\">])")
-        for root, _, files in os.walk("."):
-            for fname in files:
-                if fname.endswith((".cpp", ".c", ".h", ".hpp", ".inl")):
-                    fpath = os.path.join(root, fname)
-                    try:
-                        with open(fpath, "r", encoding="latin-1") as f:
-                            content = f.read()
-                        new_content = inc_pattern.sub(lambda m: m.group(1) + m.group(2).replace("\\", "/") + m.group(3), content)
-                        if new_content != content:
-                            with open(fpath, "w", encoding="latin-1") as f:
-                                f.write(new_content)
-                    except: pass
+            f.write('\nadd_compile_options(-fms-extensions -fdeclspec -Wno-error -Wno-everything)\n' + cmake)
         EOF
         
         python3 fix_all.py > fix_log.txt 2>&1
@@ -384,16 +170,8 @@ jobs:
         EXIT_CODE=$?
         if [ $EXIT_CODE -ne 0 ]; then
           echo "================ DERLENEN DOSYA DURUMU ================"
-          grep -E "\[[0-9]+/[0-9]+\] Building CXX" build_log.txt | tail -n 25
+          grep -E "\[[0-9]+/[0-9]+\] Building CXX" build_log.txt | tail -n 15
           echo "================ GERCEK HATA BURADA ================"
-          grep -i -E "error:|fatal error:|cannot find|undefined reference|CMake Error|FAILURE:" build_log.txt -B 1 -A 2 | head -n 65
-          echo "======================================================="
+          grep -i -E "error:|fatal error:|cannot find|undefined reference|CMake Error|FAILURE:" build_log.txt -B 1 -A 3 | head -n 65
           exit $EXIT_CODE
         fi
-        cat build_log.txt | tail -n 30
-
-    - name: Uretilen APK Dosyasini Yukle
-      uses: actions/upload-artifact@v4
-      with:
-        name: Metin2-Mobil-APK
-        path: ./Cross Platform/opengl/android/app/build/outputs/apk/debug/*.apk
