@@ -28,20 +28,45 @@ jobs:
       with:
         gradle-version: '8.13'
 
-    - name: Klasor Harf Uyumsuzluklarini Duzelt ve APK Derle
+    - name: Tum Yollari Duzelt ve APK Derle
       working-directory: ./Cross Platform/opengl/android
       run: |
         rm -f local.properties
         cd ../clientsource
-        for dir in */; do
-          lower=$(echo "$dir" | tr '[:upper:]' '[:lower:]')
-          if [ "$dir" != "$lower" ]; then
-            ln -s "${dir%/}" "${lower%/}" || true
-          fi
-        done
-        sed -i 's/userinterface/UserInterface/gI' CMakeLists.txt || true
+        
+        # 1. Windows ters slaslarini (\) Linux duz slasina (/) cevir
+        sed -i 's/\\/\//g' CMakeLists.txt
+        
+        # 2. CMakeLists.txt icindeki klasor/dosya buyuk-kucuk harf uyumsuzluklarini gercek dosya adlariyla eslestir
+        python3 -c '
+        import os, re
+        file_map = {}
+        for root, dirs, files in os.walk("."):
+            for name in files + dirs:
+                rel = os.path.relpath(os.path.join(root, name), ".")
+                file_map[rel.lower()] = rel
+        with open("CMakeLists.txt", "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        for lower_path, real_path in sorted(file_map.items(), key=lambda x: -len(x[0])):
+            if lower_path != real_path.lower(): continue
+            pattern = re.compile(re.escape(lower_path), re.IGNORECASE)
+            content = pattern.sub(real_path, content)
+        with open("CMakeLists.txt", "w", encoding="utf-8") as f:
+            f.write(content)
+        '
+        
         cd ../android
-        gradle assembleDebug --stacktrace
+        # 3. Gereksiz stacktrace kalabaligi olmadan derle ve hata varsa tam satirini goster
+        set +e
+        gradle assembleDebug > build_log.txt 2>&1
+        EXIT_CODE=$?
+        if [ $EXIT_CODE -ne 0 ]; then
+          echo "================ GERCEK HATA BURADA ================"
+          grep -i -E "error:|fatal error:|cannot find|undefined reference|CMake Error|FAILURE:" build_log.txt -B 2 -A 5 | tail -n 80
+          echo "===================================================="
+          exit $EXIT_CODE
+        fi
+        cat build_log.txt | tail -n 30
 
     - name: Uretilen APK Dosyasini Yukle
       uses: actions/upload-artifact@v4
