@@ -28,7 +28,7 @@ jobs:
       with:
         gradle-version: '8.13'
 
-    - name: Tum Dosya Harflerini Otomatik Eslestir ve APK Derle
+    - name: Tum Dosya ve Include Harflerini Eslestir ve APK Derle
       working-directory: ./Cross Platform/opengl/android
       run: |
         rm -f local.properties
@@ -37,20 +37,34 @@ jobs:
         python3 -c '
         import os, re
 
-        # 1. CMakeLists.txt icindeki TUM dosya ve klasor yollarini gercek adlariyla otomatik degistir
+        # 1. Tum klasor ve dosyalar icin hem tam kucuk harf (eterlib) hem de ilk harfi kucuk (eterLib) kisayollar olustur
+        for target in ["clientsource", "Extern"]:
+            if not os.path.exists(target): continue
+            for root, dirs, files in os.walk(target, topdown=False):
+                for name in files + dirs:
+                    variants = {
+                        name.lower(),
+                        name[0].lower() + name[1:] if len(name) > 1 else name.lower(),
+                        name.replace("PRTerrainLib", "prTerrainLib").replace("CWebBrowser", "cWebBrowser")
+                    }
+                    for var in variants:
+                        if name != var and not os.path.exists(os.path.join(root, var)):
+                            try: os.symlink(name, os.path.join(root, var))
+                            except: pass
+
+        # 2. Gercek dosya yollarini haritala
         os.chdir("clientsource")
         real_paths = {}
-        real_names = {}
         for root, dirs, files in os.walk("."):
             for name in dirs + files:
                 rel = os.path.relpath(os.path.join(root, name), ".").replace("\\", "/")
                 real_paths[rel.lower()] = rel
-                real_names[name.lower()] = name
 
+        # 3. CMakeLists.txt icindeki yollari gercek harflerle duzelt
         with open("CMakeLists.txt", "r", encoding="utf-8", errors="ignore") as f:
             cmake = f.read().replace("\\", "/")
 
-        def fix_cmake_path(match):
+        def fix_path(match):
             val = match.group(0)
             low = val.lower()
             if low in real_paths:
@@ -63,21 +77,27 @@ jobs:
                     return real_paths[comb]
             return val
 
-        cmake = re.sub(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+", fix_cmake_path, cmake)
-
+        cmake = re.sub(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+", fix_path, cmake)
         with open("CMakeLists.txt", "w", encoding="utf-8") as f:
             f.write(cmake)
 
-        # 2. C++ kodlarinin icindeki #include satirlarindaki harf uyumsuzluklarini da duzelt
-        os.chdir("..")
-        for target in ["clientsource", "Extern"]:
-            if not os.path.exists(target): continue
-            for root, dirs, files in os.walk(target, topdown=False):
-                for name in files + dirs:
-                    low = name.lower()
-                    if name != low and not os.path.exists(os.path.join(root, low)):
-                        try: os.symlink(name, os.path.join(root, low))
-                        except: pass
+        # 4. C/C++ dosyalarinin icindeki #include satirlarindaki ters slaslari ve harf uyumsuzluklarini duzelt
+        inc_pattern = re.compile(r"(#\s*include\s*[\"<])([^\"<>]+)([\">])")
+        for root, _, files in os.walk("."):
+            for fname in files:
+                if fname.endswith((".cpp", ".c", ".h", ".hpp", ".inl")):
+                    fpath = os.path.join(root, fname)
+                    try:
+                        with open(fpath, "r", encoding="latin-1") as f:
+                            content = f.read()
+                        def fix_inc(m):
+                            p = m.group(2).replace("\\", "/")
+                            return m.group(1) + p + m.group(3)
+                        new_content = inc_pattern.sub(fix_inc, content)
+                        if new_content != content:
+                            with open(fpath, "w", encoding="latin-1") as f:
+                                f.write(new_content)
+                    except: pass
         '
         
         cd android
