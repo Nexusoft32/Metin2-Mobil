@@ -28,41 +28,55 @@ jobs:
       with:
         gradle-version: '8.13'
 
-    - name: Tum Yollari Duzelt ve APK Derle
+    - name: Tum Dosya Harflerini Eslestir ve APK Derle
       working-directory: ./Cross Platform/opengl/android
       run: |
         rm -f local.properties
-        cd ../clientsource
+        cd ..
         
-        # 1. Windows ters slaslarini (\) Linux duz slasina (/) cevir
-        sed -i 's/\\/\//g' CMakeLists.txt
-        
-        # 2. CMakeLists.txt icindeki klasor/dosya buyuk-kucuk harf uyumsuzluklarini gercek dosya adlariyla eslestir
         python3 -c '
         import os, re
+
+        # 1. Tum klasor ve dosyalar icin kucuk harfli kisayollar (symlink) olustur (#include hatalarini onler)
+        for root, dirs, files in os.walk(".", topdown=False):
+            for name in files + dirs:
+                low = name.lower()
+                if name != low:
+                    src = os.path.join(root, name)
+                    dst = os.path.join(root, low)
+                    if not os.path.exists(dst):
+                        try:
+                            os.symlink(name, dst)
+                        except Exception:
+                            pass
+
+        # 2. CMakeLists.txt icindeki tum dosya yollarini gercek buyuk/kucuk harflerle degistir
+        os.chdir("clientsource")
         file_map = {}
         for root, dirs, files in os.walk("."):
             for name in files + dirs:
-                rel = os.path.relpath(os.path.join(root, name), ".")
+                rel = os.path.relpath(os.path.join(root, name), ".").replace("\\", "/")
                 file_map[rel.lower()] = rel
+
         with open("CMakeLists.txt", "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read()
+            content = f.read().replace("\\", "/")
+
         for lower_path, real_path in sorted(file_map.items(), key=lambda x: -len(x[0])):
-            if lower_path != real_path.lower(): continue
-            pattern = re.compile(re.escape(lower_path), re.IGNORECASE)
-            content = pattern.sub(real_path, content)
+            if lower_path != real_path and len(lower_path) > 3:
+                pattern = re.compile(re.escape(lower_path), re.IGNORECASE)
+                content = pattern.sub(real_path, content)
+
         with open("CMakeLists.txt", "w", encoding="utf-8") as f:
             f.write(content)
         '
         
-        cd ../android
-        # 3. Gereksiz stacktrace kalabaligi olmadan derle ve hata varsa tam satirini goster
+        cd android
         set +e
         gradle assembleDebug > build_log.txt 2>&1
         EXIT_CODE=$?
         if [ $EXIT_CODE -ne 0 ]; then
           echo "================ GERCEK HATA BURADA ================"
-          grep -i -E "error:|fatal error:|cannot find|undefined reference|CMake Error|FAILURE:" build_log.txt -B 2 -A 5 | tail -n 80
+          grep -i -E "error:|fatal error:|cannot find|undefined reference|CMake Error|FAILURE:" build_log.txt -B 2 -A 5 | tail -n 100
           echo "===================================================="
           exit $EXIT_CODE
         fi
