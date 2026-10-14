@@ -37,18 +37,21 @@ jobs:
         python3 -c '
         import os, re
 
-        # 1. Tum klasor ve dosyalar icin kucuk harfli kisayollar (symlink) olustur (#include hatalarini onler)
-        for root, dirs, files in os.walk(".", topdown=False):
-            for name in files + dirs:
-                low = name.lower()
-                if name != low:
-                    src = os.path.join(root, name)
-                    dst = os.path.join(root, low)
-                    if not os.path.exists(dst):
-                        try:
-                            os.symlink(name, dst)
-                        except Exception:
-                            pass
+        # 1. SADECE C++ klasorlerinde (clientsource ve Extern) kucuk harfli kisayollar olustur (android klasorune dokunma!)
+        for target_dir in ["clientsource", "Extern"]:
+            if not os.path.exists(target_dir): continue
+            for root, dirs, files in os.walk(target_dir, topdown=False):
+                for name in files + dirs:
+                    if name.endswith(".java"): continue
+                    low = name.lower()
+                    if name != low:
+                        src = os.path.join(root, name)
+                        dst = os.path.join(root, low)
+                        if not os.path.exists(dst):
+                            try:
+                                os.symlink(name, dst)
+                            except Exception:
+                                pass
 
         # 2. CMakeLists.txt icindeki tum dosya yollarini gercek buyuk/kucuk harflerle degistir
         os.chdir("clientsource")
