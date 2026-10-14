@@ -28,7 +28,7 @@ jobs:
       with:
         gradle-version: '8.13'
 
-    - name: C++ Windows/DirectX Uyumlulugunu Yamala ve APK Derle
+    - name: 32-Bit (armeabi-v7a) ve DirectX Uyumlulugunu Yamala
       working-directory: ./Cross Platform/opengl/android
       run: |
         rm -f local.properties
@@ -37,28 +37,42 @@ jobs:
         cat << 'EOF' > fix_all.py
         import os, re
 
+        # 0. Metin2 ve Granny3D 32-bit (sizeof(void*)==4) oldugu icin build.gradle icindeki arm64-v8a hedefini armeabi-v7a (32-bit) yap!
+        gradle_app = "android/app/build.gradle"
+        if os.path.exists(gradle_app):
+            with open(gradle_app, "r", encoding="utf-8", errors="ignore") as f:
+                gcontent = f.read()
+            gcontent = gcontent.replace("arm64-v8a", "armeabi-v7a").replace("x86_64", "armeabi-v7a")
+            with open(gradle_app, "w", encoding="utf-8") as f:
+                f.write(gcontent)
+            print("build.gradle 32-bit (armeabi-v7a) olarak ayarlandi!")
+
         for root, dirs, files in os.walk("clientsource"):
             for fname in files:
-                if fname.lower() == "windows.h" and "android_compat" in root.lower():
-                    wpath = os.path.join(root, fname)
-                    with open(wpath, "r", encoding="latin-1") as f:
-                        wcode = f.read()
-                    wcode = wcode.replace("typedef uint32_t DWORD;", "typedef unsigned long DWORD;")
-                    with open(wpath, "w", encoding="latin-1") as f:
-                        f.write(wcode)
+                # EterBase/StdAfx.h icindeki RECT tanimini korumaya al
+                if fname.lower() == "stdafx.h":
+                    spath = os.path.join(root, fname)
+                    with open(spath, "r", encoding="latin-1") as f:
+                        scode = f.read()
+                    if "} RECT;" in scode and "RECT_DEFINED" not in scode:
+                        scode = re.sub(
+                            r"(typedef\s+struct\s*\{[^}]*\}\s*RECT\s*;)",
+                            r"#ifndef RECT_DEFINED\n#define RECT_DEFINED\n\1\n#endif",
+                            scode
+                        )
+                        with open(spath, "w", encoding="latin-1") as f:
+                            f.write(scode)
 
                 if fname.lower() == "grpopengl.h":
                     gpath = os.path.join(root, fname)
                     with open(gpath, "r", encoding="latin-1") as f:
                         gcode = f.read()
 
-                    # Dosyanin orijinal satirlarini alalim
                     orig_lines = gcode.splitlines()
-                    print("GrpOpenGL.h toplam satir sayisi:", len(orig_lines))
 
-                    # Adamin 766. satirdan (struct IDirect3DTexture8) dosya sonuna kadar yazdigi siniflari
-                    # hic degistirmeden kesip, 325. satirin (ilk kullanildiklari yerin) ustune tasiyalim!
-                    # (766. satir 0-indeksli listede 765'tir. "struct IDirect3DTexture8" satirini bulup oradan boluyoruz)
+                    # Adamin 766. satirdan (struct IDirect3DTexture8) dosya sonuna kadar yazdigi tum siniflari
+                    # 260. satirdaki D3DXVec3Project fonksiyonunun HEMEN USTUNE tasiyalim!
+                    # (Cunku D3DXVIEWPORT8 ilk kez 261. satirda D3DXVec3Project icinde kullaniliyor!)
                     split_idx = -1
                     for idx, l in enumerate(orig_lines):
                         if "struct IDirect3DTexture8" in l and "{" in l:
@@ -66,7 +80,6 @@ jobs:
                             break
 
                     if split_idx != -1:
-                        # 766. satirdan (split_idx) sondaki #endif'ten bir onceki satira kadar olan kisim
                         bottom_structs = []
                         remaining_tail = []
                         for l in orig_lines[split_idx:]:
@@ -75,17 +88,21 @@ jobs:
                             else:
                                 bottom_structs.append(l)
                         
-                        # 325. satirdaki "#define D3DMATERIAL8 GL_MATERIAL" satirini bulup hemen altina bu siniflari koyalim
+                        # 260. satirdaki D3DXVec3Project fonksiyonunun hemen ustunu bul
                         insert_idx = -1
                         for idx, l in enumerate(orig_lines[:split_idx]):
-                            if "D3DXVECTOR4 GLVECTOR4" in l:
-                                insert_idx = idx + 1
+                            if "D3DXVec3Project(" in l:
+                                insert_idx = idx
                                 break
                         
                         if insert_idx != -1:
                             reordered_lines = (
                                 orig_lines[:insert_idx] +
-                                ["\n// --- ASAGIDAN YUKARI TASINAN ORIJINAL SINIFLAR ---"] +
+                                ["\n// --- ASAGIDAN YUKARI TASINAN ORIJINAL SINIFLAR ---",
+                                 "struct IDirect3D8;",
+                                 "struct IDirect3DDevice8;",
+                                 "typedef IDirect3D8* LPDIRECT3D8;",
+                                 "typedef IDirect3DDevice8* LPDIRECT3DDEVICE8;"] +
                                 bottom_structs +
                                 ["typedef IDirect3DTexture8* LPDIRECT3DTEXTURE8;",
                                  "typedef IDirect3DSurface8* LPDIRECT3DSURFACE8;",
@@ -95,8 +112,6 @@ jobs:
                                  "typedef IDirect3DIndexBuffer8* LPDIRECT3DINDEXBUFFER8;",
                                  "typedef ID3DXMatrixStack* LPD3DXMATRIXSTACK;",
                                  "typedef ID3DXBuffer* LPD3DXBUFFER;",
-                                 "struct IDirect3DDevice8;",
-                                 "typedef IDirect3DDevice8* LPDIRECT3DDEVICE8;",
                                  "// -------------------------------------------------\n"] +
                                 orig_lines[insert_idx:split_idx] +
                                 remaining_tail
@@ -122,7 +137,8 @@ jobs:
                         1
                     )
 
-                    # En tepeye sadece eksik sabitleri (#define) ve temel tipleri (BYTE, RECT vb.) koyalim (struct'lari tekrar yazmayalim ki cakismasin!)
+                    # En tepeye CAKISMA YARATMAYAN sadece eksik sabitleri ve temel tipleri koyalim
+                    # (D3DDISPLAYMODE ve D3DADAPTER_IDENTIFIER8 zaten dosyanin kendi icinde var, onlari tekrar yazmiyoruz!)
                     top_lines = [
                         "#pragma once",
                         "#include <stdint.h>",
@@ -135,14 +151,16 @@ jobs:
                         "#endif",
                         "typedef unsigned char BYTE;",
                         "typedef unsigned short WORD;",
-                        "typedef unsigned long DWORD;",
-                        "typedef unsigned long ULONG;",
+                        "typedef uint32_t DWORD;",
+                        "typedef uint32_t ULONG;",
                         "typedef int32_t LONG;",
                         "typedef unsigned int UINT;",
                         "typedef int BOOL;",
                         "typedef long HRESULT;",
                         "typedef const void* LPCVOID;",
                         "typedef void* LPVOID;",
+                        "typedef const char* LPCSTR;",
+                        "typedef char* LPSTR;",
                         "typedef void* HWND;",
                         "typedef void* HDC;",
                         "typedef void* HGLRC;",
@@ -165,10 +183,6 @@ jobs:
                         "typedef int D3DTEXTURESTAGESTATETYPE;",
                         "typedef int D3DRENDERSTATETYPE;",
                         "typedef int D3DTRANSFORMSTATETYPE;",
-                        "typedef struct _D3DLOCKED_RECT { int Pitch; void* pBits; } D3DLOCKED_RECT;",
-                        "typedef struct _D3DSURFACE_DESC { D3DFORMAT Format; int Type; DWORD Usage; D3DPOOL Pool; UINT Size; int MultiSampleType; UINT Width; UINT Height; } D3DSURFACE_DESC;",
-                        "typedef struct _D3DADAPTER_IDENTIFIER8 { char Driver[512]; char Description[512]; DWORD DriverVersionLowPart; DWORD DriverVersionHighPart; DWORD VendorId; DWORD DeviceId; DWORD SubSysId; DWORD Revision; DWORD DeviceIdentifier[4]; DWORD WHQLLevel; } D3DADAPTER_IDENTIFIER8;",
-                        "typedef struct _D3DDISPLAYMODE { UINT Width; UINT Height; UINT RefreshRate; D3DFORMAT Format; } D3DDISPLAYMODE;",
                         "#define D3DFMT_UNKNOWN 0",
                         "#define D3DFMT_R8G8B8 20",
                         "#define D3DFMT_A8R8G8B8 21",
@@ -265,7 +279,10 @@ jobs:
                         "#define D3DPTADDRESSCAPS_BORDER 0x00000008L"
                     ]
 
-                    # Adamin 885. satirda yazdigi D3DCAPS8 icinde DevCaps, Caps2 vb. eksik oldugu icin onu tam haliyle degistirelim
+                    # GrpOpenGL.h icindeki unsigned long DWORD satirini uint32_t ile uyumlu hale getir
+                    gcode = gcode.replace("typedef unsigned long DWORD;", "typedef uint32_t DWORD;")
+                    gcode = gcode.replace("typedef struct { BYTE peRed; BYTE peGreen; BYTE peBlue; BYTE peFlags; } PALETTEENTRY;", "#ifndef PALETTEENTRY_DEFINED\n#define PALETTEENTRY_DEFINED\ntypedef struct _PALETTEENTRY { BYTE peRed; BYTE peGreen; BYTE peBlue; BYTE peFlags; } PALETTEENTRY;\n#endif")
+
                     gcode = gcode.replace(
                         "struct D3DCAPS8 {\n    DWORD TextureCaps;\n    DWORD MaxTextureWidth, MaxTextureHeight;\n};",
                         "struct D3DCAPS8 { D3DDEVTYPE DeviceType; UINT AdapterOrdinal; DWORD Caps, Caps2, Caps3, PresentationIntervals, CursorCaps, DevCaps, PrimitiveMiscCaps, RasterCaps, ZCmpCaps, SrcBlendCaps, DestBlendCaps, AlphaCmpCaps, ShadeCaps, TextureCaps, TextureFilterCaps, CubeTextureFilterCaps, VolumeTextureFilterCaps, TextureAddressCaps, VolumeTextureAddressCaps, LineCaps, MaxTextureWidth, MaxTextureHeight, MaxVolumeExtent, MaxTextureRepeat, MaxTextureAspectRatio, MaxAnisotropy, StencilCaps, FVFCaps, TextureOpCaps, VertexProcessingCaps, MaxActiveLights, MaxVertexBlendMatrices, MaxVertexBlendMatrixIndex, MaxPrimitiveCount, MaxVertexIndex, MaxStreams, MaxStreamStride, VertexShaderVersion, MaxVertexShaderConst, PixelShaderVersion; WORD MaxTextureBlendStages, MaxSimultaneousTextures, MaxUserClipPlanes; float MaxVertexW, GuardBandLeft, GuardBandTop, GuardBandRight, GuardBandBottom, ExtentsAdjust, MaxPointSize, MaxPixelShaderValue; };"
@@ -298,9 +315,8 @@ jobs:
                     fixed_code = "\n".join(top_lines) + "\n" + gcode + "\n" + "\n".join(bottom_lines) + "\n"
                     with open(gpath, "w", encoding="latin-1") as f:
                         f.write(fixed_code)
-                    print("GrpOpenGL.h SIRALAMASI DUZELTILDI:", gpath)
 
-        # 3. Kucuk harf ve camelCase kisayollar olustur
+        # Kucuk harf ve camelCase kisayollar olustur
         for target in ["clientsource", "Extern"]:
             if not os.path.exists(target): continue
             for root, dirs, files in os.walk(target, topdown=False):
@@ -368,7 +384,7 @@ jobs:
         EXIT_CODE=$?
         if [ $EXIT_CODE -ne 0 ]; then
           echo "================ DERLENEN DOSYA DURUMU ================"
-          grep -E "\[[0-9]+/[0-9]+\] Building CXX" build_log.txt | tail -n 20
+          grep -E "\[[0-9]+/[0-9]+\] Building CXX" build_log.txt | tail -n 25
           echo "================ GERCEK HATA BURADA ================"
           grep -i -E "error:|fatal error:|cannot find|undefined reference|CMake Error|FAILURE:" build_log.txt -B 1 -A 2 | head -n 65
           echo "======================================================="
