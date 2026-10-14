@@ -37,7 +37,6 @@ jobs:
         cat << 'EOF' > fix_all.py
         import os, re
 
-        # 1. GrpOpenGL.h ve windows.h dosyalarini sembolik linklerden ONCE gercek yollariyla bul ve yamala
         for root, dirs, files in os.walk("clientsource"):
             for fname in files:
                 if fname.lower() == "windows.h" and "android_compat" in root.lower():
@@ -53,11 +52,12 @@ jobs:
                     with open(gpath, "r", encoding="latin-1") as f:
                         gcode = f.read()
 
-                    print("=== GRPOPENGL.H 300-800 ARASI ===")
-                    for i, line in enumerate(gcode.splitlines()[299:800], 300):
+                    print("=== GRPOPENGL.H 450-SONU ARASI ===")
+                    for i, line in enumerate(gcode.splitlines()[449:], 450):
                         print(f"{i}: {line}")
-                    print("=================================")
+                    print("==================================")
 
+                    # 1. En tepeye eklenecek eksiksiz DirectX 8 veri tipleri ve yapilar (struct)
                     top_lines = [
                         "#pragma once",
                         "#include <stdint.h>",
@@ -74,19 +74,44 @@ jobs:
                         "typedef const void* LPCVOID;",
                         "typedef void* LPVOID;",
                         "typedef void* HWND;",
+                        "typedef void* HDC;",
+                        "typedef void* HGLRC;",
                         "#ifndef CONST",
                         "#define CONST const",
                         "#endif",
                         "#ifndef S_OK",
                         "#define S_OK ((HRESULT)0L)",
                         "#endif",
+                        "#ifndef RECT_DEFINED",
+                        "#define RECT_DEFINED",
+                        "typedef struct tagRECT { LONG left; LONG top; LONG right; LONG bottom; } RECT;",
+                        "#endif",
+                        "typedef int D3DFORMAT;",
+                        "typedef int D3DPOOL;",
+                        "typedef int D3DDEVTYPE;",
                         "#ifndef D3DFMT_A8R8G8B8",
+                        "#define D3DFMT_UNKNOWN 0",
+                        "#define D3DFMT_R8G8B8 20",
                         "#define D3DFMT_A8R8G8B8 21",
+                        "#define D3DFMT_X8R8G8B8 22",
+                        "#define D3DFMT_R5G6B5 23",
+                        "#define D3DFMT_A1R5G5B5 25",
+                        "#define D3DFMT_A4R4G4B4 26",
+                        "#define D3DFMT_A8 28",
+                        "#define D3DFMT_DXT1 827611204",
+                        "#define D3DFMT_DXT3 861165636",
+                        "#define D3DFMT_DXT5 894720068",
+                        "#define D3DFMT_D16 80",
+                        "#define D3DFMT_D24S8 75",
+                        "#define D3DFMT_INDEX16 101",
+                        "#define D3DFMT_INDEX32 102",
                         "#endif",
                         "#ifndef D3DPOOL_MANAGED",
+                        "#define D3DPOOL_DEFAULT 0",
                         "#define D3DPOOL_MANAGED 1",
+                        "#define D3DPOOL_SYSTEMMEM 2",
+                        "#define D3DPOOL_SCRATCH 3",
                         "#endif",
-                        "#ifndef D3DDEVCAPS_HWTRANSFORMANDLIGHT",
                         "#define D3DDEVCAPS_HWTRANSFORMANDLIGHT 0x00010000L",
                         "#define D3DCAPS2_CANRENDERWINDOWED 0x00080000L",
                         "#define D3DVTXPCAPS_DIRECTIONALLIGHTS 0x00000008L",
@@ -94,31 +119,73 @@ jobs:
                         "#define D3DVTXPCAPS_TEXGEN 0x00000001L",
                         "#define D3DPMISCCAPS_CLIPTLVERTS 0x00000200L",
                         "#define D3DPTADDRESSCAPS_BORDER 0x00000008L",
+                        "typedef struct _D3DVIEWPORT8 { DWORD X; DWORD Y; DWORD Width; DWORD Height; float MinZ; float MaxZ; } D3DVIEWPORT8;",
+                        "typedef struct _D3DADAPTER_IDENTIFIER8 { char Driver[512]; char Description[512]; DWORD DriverVersionLowPart; DWORD DriverVersionHighPart; DWORD VendorId; DWORD DeviceId; DWORD SubSysId; DWORD Revision; DWORD DeviceIdentifier[4]; DWORD WHQLLevel; } D3DADAPTER_IDENTIFIER8;",
+                        "typedef struct _D3DDISPLAYMODE { UINT Width; UINT Height; UINT RefreshRate; D3DFORMAT Format; } D3DDISPLAYMODE;",
+                        "typedef struct _D3DCAPS8 { D3DDEVTYPE DeviceType; UINT AdapterOrdinal; DWORD Caps; DWORD Caps2; DWORD Caps3; DWORD PresentationIntervals; DWORD CursorCaps; DWORD DevCaps; DWORD PrimitiveMiscCaps; DWORD RasterCaps; DWORD ZCmpCaps; DWORD SrcBlendCaps; DWORD DestBlendCaps; DWORD AlphaCmpCaps; DWORD ShadeCaps; DWORD TextureCaps; DWORD TextureFilterCaps; DWORD CubeTextureFilterCaps; DWORD VolumeTextureFilterCaps; DWORD TextureAddressCaps; DWORD VolumeTextureAddressCaps; DWORD LineCaps; DWORD MaxTextureWidth; DWORD MaxTextureHeight; DWORD MaxVolumeExtent; DWORD MaxTextureRepeat; DWORD MaxTextureAspectRatio; DWORD MaxAnisotropy; float MaxVertexW; float GuardBandLeft; float GuardBandTop; float GuardBandRight; float GuardBandBottom; float ExtentsAdjust; DWORD StencilCaps; DWORD FVFCaps; DWORD TextureOpCaps; WORD MaxTextureBlendStages; WORD MaxSimultaneousTextures; DWORD VertexProcessingCaps; DWORD MaxActiveLights; WORD MaxUserClipPlanes; WORD MaxVertexBlendMatrices; DWORD MaxVertexBlendMatrixIndex; float MaxPointSize; DWORD MaxPrimitiveCount; DWORD MaxVertexIndex; DWORD MaxStreams; DWORD MaxStreamStride; DWORD VertexShaderVersion; DWORD MaxVertexShaderConst; DWORD PixelShaderVersion; float MaxPixelShaderValue; } D3DCAPS8;",
+                        "typedef struct _D3DPRESENT_PARAMETERS_ { UINT BackBufferWidth; UINT BackBufferHeight; D3DFORMAT BackBufferFormat; UINT BackBufferCount; int MultiSampleType; DWORD SwapEffect; HWND hDeviceWindow; BOOL Windowed; BOOL EnableAutoDepthStencil; D3DFORMAT AutoDepthStencilFormat; DWORD Flags; UINT FullScreen_RefreshRateInHz; UINT FullScreen_PresentationInterval; } D3DPRESENT_PARAMETERS;",
+                        "struct IDirect3DDevice8;",
+                        "struct IDirect3DTexture8;",
+                        "struct IDirect3DSurface8;",
+                        "struct IDirect3DVertexBuffer8;",
+                        "struct IDirect3DIndexBuffer8;",
+                        "typedef struct IDirect3DDevice8* LPDIRECT3DDEVICE8;",
+                        "typedef struct IDirect3DTexture8* LPDIRECT3DTEXTURE8;",
+                        "typedef struct IDirect3DSurface8* LPDIRECT3DSURFACE8;",
+                        "typedef struct IDirect3DVertexBuffer8* LPDIRECT3DVERTEXBUFFER8;",
+                        "typedef struct IDirect3DIndexBuffer8* LPDIRECT3DINDEXBUFFER8;"
+                    ]
+
+                    # 2. 330-350. satirdaki 3 erken fonksiyonu (D3DXCreateTexture vb.) kesmeden devre disi birakip en sona kopyala
+                    # ve 384. satirdaki IDirect3D8 icinde new IDirect3DDevice8() cagrildigi icin IDirect3D8 sinifini da IDirect3DDevice8'in altina kopyala!
+                    gcode = gcode.replace(
+                        "inline HRESULT D3DXCreateTexture(",
+                        "#if 0\ninline HRESULT D3DXCreateTexture("
+                    ).replace(
+                        "#define D3DVSD_STREAM(s) (s)",
+                        "#endif\n#define D3DVSD_STREAM(s) (s)"
+                    )
+
+                    # IDirect3D8 sinifinin (384-441. satirlar) icindeki CreateDevice fonksiyonu new IDirect3DDevice8() kullandigi icin
+                    # onu inline olarak dosyanin en sonunda tanimlayalim
+                    gcode = gcode.replace(
+                        "HRESULT CreateDevice(UINT, int, HWND hWnd, DWORD, D3DPRESENT_PARAMETERS*, IDirect3DDevice8** ppDevice) {",
+                        "HRESULT CreateDevice(UINT, int, HWND hWnd, DWORD, D3DPRESENT_PARAMETERS*, IDirect3DDevice8** ppDevice);\n#if 0\nHRESULT OldCreateDevice() {"
+                    ).replace(
+                        "ULONG Release() { delete this; return 0; }",
+                        "#endif\nULONG Release() { delete this; return 0; }"
+                    )
+
+                    bottom_lines = [
+                        "#ifdef ENABLE_OPENGL",
+                        "inline HRESULT IDirect3D8::CreateDevice(UINT, int, HWND hWnd, DWORD, D3DPRESENT_PARAMETERS*, IDirect3DDevice8** ppDevice) {",
+                        "    *ppDevice = new IDirect3DDevice8();",
+                        "    return S_OK;",
+                        "}",
+                        "inline HRESULT D3DXCreateTexture(LPDIRECT3DDEVICE8 pDevice, UINT Width, UINT Height, UINT MipLevels, DWORD Usage, D3DFORMAT Format, D3DPOOL Pool, LPDIRECT3DTEXTURE8* ppTexture) {",
+                        "    return pDevice->CreateTexture(Width, Height, MipLevels, Usage, Format, Pool, ppTexture);",
+                        "}",
+                        "inline HRESULT D3DXCreateTextureFromFileInMemoryEx(LPDIRECT3DDEVICE8 pDevice, LPCVOID pSrcData, UINT SrcDataSize, UINT Width, UINT Height, UINT MipLevels, DWORD Usage, D3DFORMAT Format, D3DPOOL Pool, DWORD Filter, DWORD MipFilter, D3DCOLOR ColorKey, D3DXIMAGE_INFO* pSrcInfo, PALETTEENTRY* pPalette, LPDIRECT3DTEXTURE8* ppTexture) {",
+                        "    if (pSrcInfo) {",
+                        "        pSrcInfo->Width = (Width == D3DX_DEFAULT) ? 256 : Width;",
+                        "        pSrcInfo->Height = (Height == D3DX_DEFAULT) ? 256 : Height;",
+                        "        pSrcInfo->MipLevels = 1;",
+                        "        pSrcInfo->Format = D3DFMT_A8R8G8B8;",
+                        "    }",
+                        "    return pDevice->CreateTexture(256, 256, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, ppTexture);",
+                        "}",
+                        "inline HRESULT D3DXLoadSurfaceFromSurface(LPDIRECT3DSURFACE8 pDestSurface, CONST PALETTEENTRY* pDestPalette, CONST RECT* pDestRect, LPDIRECT3DSURFACE8 pSrcSurface, CONST PALETTEENTRY* pSrcPalette, CONST RECT* pSrcRect, DWORD Filter, D3DCOLOR ColorKey) {",
+                        "    return S_OK;",
+                        "}",
                         "#endif"
                     ]
-                    top_patch = "\n".join(top_lines)
 
-                    # Erken kullanilan fonksiyonlari dosyanin en sonuna (IDirect3DDevice8 taniminin altina) tasi
-                    lines = gcode.splitlines()
-                    early_funcs = []
-                    new_lines = []
-                    in_early = False
-                    for line in lines:
-                        if "inline HRESULT D3DXCreateTexture(" in line or "inline HRESULT D3DXCreateTextureFromFileInMemoryEx(" in line or "inline HRESULT D3DXLoadSurfaceFromSurface(" in line:
-                            in_early = True
-                        if in_early:
-                            early_funcs.append(line)
-                            if line.strip() == "}":
-                                in_early = False
-                        else:
-                            new_lines.append(line)
-
-                    fixed_code = top_patch + "\n" + "\n".join(new_lines) + "\n" + "\n".join(early_funcs) + "\n"
+                    fixed_code = "\n".join(top_lines) + "\n" + gcode + "\n" + "\n".join(bottom_lines) + "\n"
                     with open(gpath, "w", encoding="latin-1") as f:
                         f.write(fixed_code)
-                    print("GrpOpenGL.h BASARIYLA YAMALANDI:", gpath)
+                    print("GrpOpenGL.h TAMAMEN DUZELTILDI:", gpath)
 
-        # 2. Tum klasor ve dosyalar icin kucuk harf ve camelCase kisayollar olustur
+        # 3. Kucuk harf ve camelCase kisayollar olustur
         for target in ["clientsource", "Extern"]:
             if not os.path.exists(target): continue
             for root, dirs, files in os.walk(target, topdown=False):
@@ -140,7 +207,6 @@ jobs:
                 rel = os.path.relpath(os.path.join(root, name), ".").replace("\\", "/")
                 real_paths[rel.lower()] = rel
 
-        # 3. CMakeLists.txt icindeki yollari duzelt ve Windows uyumluluk bayraklarini ekle
         with open("CMakeLists.txt", "r", encoding="utf-8", errors="ignore") as f:
             cmake = f.read().replace("\\", "/")
 
@@ -164,7 +230,6 @@ jobs:
         with open("CMakeLists.txt", "w", encoding="utf-8") as f:
             f.write(cmake)
 
-        # 4. C/C++ #include satirlarindaki ters slaslari duzelt
         inc_pattern = re.compile(r"(#\s*include\s*[\"<])([^\"<>]+)([\">])")
         for root, _, files in os.walk("."):
             for fname in files:
@@ -188,10 +253,10 @@ jobs:
         EXIT_CODE=$?
         if [ $EXIT_CODE -ne 0 ]; then
           echo "================ GERCEK HATA BURADA ================"
-          grep -i -E "error:|fatal error:|cannot find|undefined reference|CMake Error|FAILURE:" build_log.txt -B 1 -A 2 | head -n 45
-          echo "---------------- DOSYA YAPISI (300-800) ----------------"
+          grep -i -E "error:|fatal error:|cannot find|undefined reference|CMake Error|FAILURE:" build_log.txt -B 1 -A 2 | head -n 55
+          echo "---------------- DOSYA YAPISI (450-SONU) ----------------"
           cat ../fix_log.txt | head -n 160
-          echo "========================================================"
+          echo "========================================================="
           exit $EXIT_CODE
         fi
         cat build_log.txt | tail -n 30
