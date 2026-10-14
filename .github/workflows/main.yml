@@ -98,13 +98,12 @@ jobs:
                                 f.write(new_content)
                     except: pass
 
-        # 4. GrpOpenGL.h ve windows.h arasindaki cakismalari onle ve sira hatasini duzelt
+        # 4. windows.h ve GrpOpenGL.h icindeki tip cakismalarini ve eksik DirectX 8 tanimlarini coz
         win_path = real_paths.get("android_compat/windows.h", "android_compat/windows.h")
         if os.path.exists(win_path):
             with open(win_path, "r", encoding="latin-1") as f:
                 wcode = f.read()
-            # DWORD cakismasini onle (unsigned long ile uyumlu yap)
-            wcode = wcode.replace("typedef uint32_t DWORD;", "#ifndef DWORD_DEFINED\n#define DWORD_DEFINED\ntypedef unsigned long DWORD;\n#endif")
+            wcode = wcode.replace("typedef uint32_t DWORD;", "typedef unsigned long DWORD;")
             with open(win_path, "w", encoding="latin-1") as f:
                 f.write(wcode)
 
@@ -112,14 +111,21 @@ jobs:
         if os.path.exists(grp_path):
             with open(grp_path, "r", encoding="latin-1") as f:
                 grp_code = f.read()
-            
-            # GrpOpenGL.h icinde 32. satirdan once unutulan temel tipleri cakisma yapmadan tanimla
+
+            # GrpOpenGL.h nin 190. satirdan sonrasini loga yazdir ki icinde ne var tam gorelim
+            print("=== GRPOPENGL.H 190-550 ARASI ===")
+            for i, line in enumerate(grp_code.splitlines()[185:550], 186):
+                print(f"{i}: {line}")
+            print("=================================")
+
+            # Eger bu tipler GrpOpenGL.h icinde asagilarda bir yerde tanimliysa, cift tanim (redefinition) olmamasi icin onlari koruma altina alalim veya en uste tasiyalim
             top_fix = "\n".join([
                 "#pragma once",
                 "#include <stdint.h>",
                 "#include <stdlib.h>",
                 "#include <string.h>",
                 "typedef unsigned char BYTE;",
+                "typedef unsigned short WORD;",
                 "typedef unsigned long DWORD;",
                 "typedef unsigned long ULONG;",
                 "typedef int32_t LONG;",
@@ -127,6 +133,7 @@ jobs:
                 "typedef int BOOL;",
                 "typedef long HRESULT;",
                 "typedef const void* LPCVOID;",
+                "typedef void* LPVOID;",
                 "typedef void* HWND;",
                 "typedef unsigned long D3DCOLOR;",
                 "#ifndef CONST",
@@ -134,21 +141,52 @@ jobs:
                 "#endif",
                 "#ifndef S_OK",
                 "#define S_OK ((HRESULT)0L)",
+                "#endif",
+                "#ifndef RECT_DEFINED",
+                "#define RECT_DEFINED",
+                "typedef struct tagRECT { LONG left; LONG top; LONG right; LONG bottom; } RECT;",
+                "#endif",
+                "#ifndef D3DFORMAT_DEFINED",
+                "#define D3DFORMAT_DEFINED",
+                "typedef int D3DFORMAT;",
+                "typedef int D3DPOOL;",
+                "typedef int D3DDEVTYPE;",
+                "#define D3DFMT_UNKNOWN 0",
+                "#define D3DFMT_R8G8B8 20",
+                "#define D3DFMT_A8R8G8B8 21",
+                "#define D3DFMT_X8R8G8B8 22",
+                "#define D3DFMT_R5G6B5 23",
+                "#define D3DFMT_A1R5G5B5 25",
+                "#define D3DFMT_A4R4G4B4 26",
+                "#define D3DFMT_A8 28",
+                "#define D3DFMT_DXT1 827611204",
+                "#define D3DFMT_DXT3 861165636",
+                "#define D3DFMT_DXT5 894720068",
+                "#define D3DFMT_D16 80",
+                "#define D3DFMT_D24S8 75",
+                "#define D3DFMT_INDEX16 101",
+                "#define D3DFMT_INDEX32 102",
+                "#define D3DPOOL_DEFAULT 0",
+                "#define D3DPOOL_MANAGED 1",
+                "#define D3DPOOL_SYSTEMMEM 2",
+                "#define D3DPOOL_SCRATCH 3",
+                "#define D3DDEVCAPS_HWTRANSFORMANDLIGHT 0x00010000L",
+                "#define D3DCAPS2_CANRENDERWINDOWED 0x00080000L",
+                "#endif",
+                "#ifndef D3DSTRUCTS_DEFINED",
+                "#define D3DSTRUCTS_DEFINED",
+                "typedef struct _D3DVIEWPORT8 { DWORD X; DWORD Y; DWORD Width; DWORD Height; float MinZ; float MaxZ; } D3DVIEWPORT8;",
+                "typedef struct _D3DADAPTER_IDENTIFIER8 { char Driver[512]; char Description[512]; DWORD DriverVersionLowPart; DWORD DriverVersionHighPart; DWORD VendorId; DWORD DeviceId; DWORD SubSysId; DWORD Revision; } D3DADAPTER_IDENTIFIER8;",
+                "typedef struct _D3DDISPLAYMODE { UINT Width; UINT Height; UINT RefreshRate; D3DFORMAT Format; } D3DDISPLAYMODE;",
+                "typedef struct _D3DCAPS8 { D3DDEVTYPE DeviceType; UINT AdapterOrdinal; DWORD Caps; DWORD Caps2; DWORD Caps3; DWORD PresentationIntervals; DWORD CursorCaps; DWORD DevCaps; DWORD PrimitiveMiscCaps; DWORD RasterCaps; DWORD ZCmpCaps; DWORD SrcBlendCaps; DWORD DestBlendCaps; DWORD AlphaCmpCaps; DWORD ShadeCaps; DWORD TextureCaps; DWORD TextureFilterCaps; DWORD CubeTextureFilterCaps; DWORD VolumeTextureFilterCaps; DWORD TextureAddressCaps; DWORD VolumeTextureAddressCaps; DWORD LineCaps; DWORD MaxTextureWidth; DWORD MaxTextureHeight; DWORD MaxVolumeExtent; DWORD MaxTextureRepeat; DWORD MaxTextureAspectRatio; DWORD MaxAnisotropy; float MaxVertexW; float GuardBandLeft; float GuardBandTop; float GuardBandRight; float GuardBandBottom; float ExtentsAdjust; DWORD StencilCaps; DWORD FVFCaps; DWORD TextureOpCaps; WORD MaxTextureBlendStages; WORD MaxSimultaneousTextures; DWORD VertexProcessingCaps; DWORD MaxActiveLights; WORD MaxUserClipPlanes; WORD MaxVertexBlendMatrices; DWORD MaxVertexBlendMatrixIndex; float MaxPointSize; DWORD MaxPrimitiveCount; DWORD MaxVertexIndex; DWORD MaxStreams; DWORD MaxStreamStride; DWORD VertexShaderVersion; DWORD MaxVertexShaderConst; DWORD PixelShaderVersion; float MaxPixelShaderValue; } D3DCAPS8;",
+                "typedef struct _D3DPRESENT_PARAMETERS_ { UINT BackBufferWidth; UINT BackBufferHeight; D3DFORMAT BackBufferFormat; UINT BackBufferCount; int MultiSampleType; DWORD SwapEffect; HWND hDeviceWindow; BOOL Windowed; BOOL EnableAutoDepthStencil; D3DFORMAT AutoDepthStencilFormat; DWORD Flags; UINT FullScreen_RefreshRateInHz; UINT FullScreen_PresentationInterval; } D3DPRESENT_PARAMETERS;",
                 "#endif"
             ])
-            
-            # Dosya icindeki mukerrer typedef unsigned long DWORD satirini korumaya al
-            grp_code = grp_code.replace("typedef unsigned long DWORD;", "// typedef unsigned long DWORD;")
-            
+
+            # GrpOpenGL.h icinde IDirect3DDevice8 sinifi 370. satirdan sonra tanimlaniyor ama 350. satirda kullaniliyor!
+            # Bu yuzden 350. satirdaki fonksiyonlari IDirect3DDevice8 taniminin altina tasiyalim veya forward declare edelim
             with open(grp_path, "w", encoding="latin-1") as f:
                 f.write(top_fix + "\n" + grp_code)
-                
-            # GrpOpenGL.h dosyasinin ilk 480 satirini logda gormek icin yazdir (eger baska eksik satir varsa tek seferde gorelim)
-            print("=== GRPOPENGL.H KONTROL ===")
-            for i, line in enumerate(grp_code.splitlines()[:480], 1):
-                if any(k in line for k in ["struct", "typedef", "class", "#include", "#ifdef", "#ifndef", "D3D"]):
-                    print(f"{i}: {line}")
-            print("===========================")
         EOF
         
         python3 fix_all.py > fix_log.txt 2>&1
@@ -159,10 +197,10 @@ jobs:
         EXIT_CODE=$?
         if [ $EXIT_CODE -ne 0 ]; then
           echo "================ GERCEK HATA BURADA ================"
-          grep -i -E "error:|fatal error:|cannot find|undefined reference|CMake Error|FAILURE:" build_log.txt -B 1 -A 3 | head -n 60
-          echo "---------------- DOSYA YAPISI ----------------"
-          cat ../fix_log.txt | head -n 60
-          echo "===================================================="
+          grep -i -E "error:|fatal error:|cannot find|undefined reference|CMake Error|FAILURE:" build_log.txt -B 1 -A 2 | head -n 45
+          echo "---------------- DOSYA YAPISI (190-550) ----------------"
+          cat ../fix_log.txt | head -n 120
+          echo "========================================================"
           exit $EXIT_CODE
         fi
         cat build_log.txt | tail -n 30
