@@ -19,8 +19,9 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Android SDK Kur
-      uses: android-actions/setup-android@v3
+    - name: Android Lisanslarini Otomatik Onayla
+      run: |
+        yes | sudo $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
     - name: Gradle Kur
       uses: gradle/actions/setup-gradle@v3
