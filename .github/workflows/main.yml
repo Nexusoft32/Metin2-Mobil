@@ -1,0 +1,40 @@
+name: Metin2 Android APK Uretici
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Kaynak Kodlari Cek
+      uses: actions/checkout@v4
+
+    - name: Java JDK 17 Kur
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Android SDK Kur
+      uses: android-actions/setup-android@v3
+
+    - name: Gradle Kur
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.2'
+
+    - name: Gereksiz Yerel Ayarlari Temizle ve APK Derle
+      working-directory: ./Cross Platform/opengl/android
+      run: |
+        rm -f local.properties
+        gradle assembleDebug --stacktrace
+
+    - name: Uretilen APK Dosyasini Yukle
+      uses: actions/upload-artifact@v4
+      with:
+        name: Metin2-Mobil-APK
+        path: ./Cross Platform/opengl/android/app/build/outputs/apk/debug/*.apk
