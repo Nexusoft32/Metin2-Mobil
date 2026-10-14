@@ -52,24 +52,23 @@ jobs:
                     with open(gpath, "r", encoding="latin-1") as f:
                         gcode = f.read()
 
-                    print("=== GRPOPENGL.H 600-SONU ARASI ===")
-                    for i, line in enumerate(gcode.splitlines()[599:], 600):
+                    print("=== GRPOPENGL.H 740-SONU ARASI ===")
+                    for i, line in enumerate(gcode.splitlines()[739:], 740):
                         print(f"{i}: {line}")
                     print("==================================")
 
-                    # Eger dosya icinde asagilarda IDirect3DTexture8 vb. tanimlanmissa cift tanim olmamasi icin adlarini degistir
                     gcode = re.sub(r"\bstruct\s+IDirect3DTexture8\b", "struct _Old_IDirect3DTexture8", gcode)
                     gcode = re.sub(r"\bstruct\s+IDirect3DSurface8\b", "struct _Old_IDirect3DSurface8", gcode)
                     gcode = re.sub(r"\bstruct\s+IDirect3DVertexBuffer8\b", "struct _Old_IDirect3DVertexBuffer8", gcode)
                     gcode = re.sub(r"\bstruct\s+IDirect3DIndexBuffer8\b", "struct _Old_IDirect3DIndexBuffer8", gcode)
                     gcode = re.sub(r"\bstruct\s+IDirect3DBaseTexture8\b", "struct _Old_IDirect3DBaseTexture8", gcode)
 
-                    # 1. En tepeye eklenecek TAM VE EKSIKSIZ DirectX 8 tipleri ve siniflari (Tamami IDirect3DDevice8'den once!)
                     top_lines = [
                         "#pragma once",
                         "#include <stdint.h>",
                         "#include <stdlib.h>",
                         "#include <string.h>",
+                        "#include <vector>",
                         "#ifdef ANDROID",
                         "#include <GLES2/gl2.h>",
                         "#include <GLES2/gl2ext.h>",
@@ -139,6 +138,73 @@ jobs:
                         "#define D3DFVF_TEX2 0x200",
                         "#define D3DFVF_TEXCOUNT_MASK 0xf00",
                         "#define D3DFVF_TEXCOUNT_SHIFT 8",
+                        "#endif",
+                        "#ifndef D3DRS_ZENABLE",
+                        "#define D3DRS_ZENABLE 7",
+                        "#define D3DRS_FILLMODE 8",
+                        "#define D3DRS_SHADEMODE 9",
+                        "#define D3DRS_ZWRITEENABLE 14",
+                        "#define D3DRS_ALPHATESTENABLE 15",
+                        "#define D3DRS_SRCBLEND 19",
+                        "#define D3DRS_DESTBLEND 20",
+                        "#define D3DRS_CULLMODE 22",
+                        "#define D3DRS_ZFUNC 23",
+                        "#define D3DRS_ALPHAREF 24",
+                        "#define D3DRS_ALPHAFUNC 25",
+                        "#define D3DRS_DITHERENABLE 26",
+                        "#define D3DRS_ALPHABLENDENABLE 27",
+                        "#define D3DRS_FOGENABLE 28",
+                        "#define D3DRS_SPECULARENABLE 29",
+                        "#define D3DRS_FOGCOLOR 34",
+                        "#define D3DRS_FOGTABLEMODE 35",
+                        "#define D3DRS_FOGSTART 36",
+                        "#define D3DRS_FOGEND 37",
+                        "#define D3DRS_FOGDENSITY 38",
+                        "#define D3DRS_NORMALIZENORMALS 39",
+                        "#define D3DRS_TEXTUREFACTOR 60",
+                        "#define D3DRS_LIGHTING 137",
+                        "#define D3DRS_AMBIENT 139",
+                        "#define D3DRS_COLORVERTEX 141",
+                        "#define D3DRS_LOCALVIEWER 142",
+                        "#define D3DRS_DIFFUSEMATERIALSOURCE 145",
+                        "#define D3DRS_SPECULARMATERIALSOURCE 146",
+                        "#define D3DRS_AMBIENTMATERIALSOURCE 147",
+                        "#define D3DRS_EMISSIVEMATERIALSOURCE 148",
+                        "#define D3DRS_VERTEXBLEND 151",
+                        "#define D3DRS_CLIPPLANEENABLE 152",
+                        "#define D3DRS_SOFTWAREVERTEXPROCESSING 153",
+                        "#define D3DRS_INDEXEDVERTEXBLENDENABLE 167",
+                        "#define D3DRS_COLORWRITEENABLE 168",
+                        "#endif",
+                        "#ifndef D3DBLEND_ZERO",
+                        "#define D3DBLEND_ZERO 1",
+                        "#define D3DBLEND_ONE 2",
+                        "#define D3DBLEND_SRCCOLOR 3",
+                        "#define D3DBLEND_INVSRCCOLOR 4",
+                        "#define D3DBLEND_SRCALPHA 5",
+                        "#define D3DBLEND_INVSRCALPHA 6",
+                        "#define D3DBLEND_DESTALPHA 7",
+                        "#define D3DBLEND_INVDESTALPHA 8",
+                        "#define D3DBLEND_DESTCOLOR 9",
+                        "#define D3DBLEND_INVDESTCOLOR 10",
+                        "#define D3DBLEND_SRCALPHASAT 11",
+                        "#define D3DBLEND_BOTHSRCALPHA 12",
+                        "#define D3DBLEND_BOTHINVSRCALPHA 13",
+                        "#endif",
+                        "#ifndef D3DCULL_NONE",
+                        "#define D3DCULL_NONE 1",
+                        "#define D3DCULL_CW 2",
+                        "#define D3DCULL_CCW 3",
+                        "#endif",
+                        "#ifndef D3DTS_VIEW",
+                        "#define D3DTS_VIEW 2",
+                        "#define D3DTS_PROJECTION 3",
+                        "#define D3DTS_TEXTURE0 16",
+                        "#define D3DTS_TEXTURE1 17",
+                        "#define D3DTS_TEXTURE2 18",
+                        "#define D3DTS_TEXTURE3 19",
+                        "#define D3DTS_WORLD 256",
+                        "#define D3DTS_WORLDMATRIX(index) (D3DTRANSFORMSTATETYPE)(index + 256)",
                         "#endif",
                         "#define D3DDEVCAPS_HWTRANSFORMANDLIGHT 0x00010000L",
                         "#define D3DCAPS2_CANRENDERWINDOWED 0x00080000L",
@@ -314,9 +380,11 @@ jobs:
         gradle assembleDebug > build_log.txt 2>&1
         EXIT_CODE=$?
         if [ $EXIT_CODE -ne 0 ]; then
+          echo "================ DERLENEN DOSYA DURUMU ================"
+          grep -E "\[[0-9]+/[0-9]+\] Building CXX" build_log.txt | tail -n 15
           echo "================ GERCEK HATA BURADA ================"
           grep -i -E "error:|fatal error:|cannot find|undefined reference|CMake Error|FAILURE:" build_log.txt -B 1 -A 2 | head -n 55
-          echo "---------------- DOSYA YAPISI (600-SONU) ----------------"
+          echo "---------------- DOSYA YAPISI (740-SONU) ----------------"
           cat ../fix_log.txt | head -n 160
           echo "========================================================="
           exit $EXIT_CODE
