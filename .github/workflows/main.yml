@@ -28,7 +28,7 @@ jobs:
       with:
         gradle-version: '8.13'
 
-    - name: Tum Dosya ve Include Harflerini Eslestir ve APK Derle
+    - name: C++ Windows/DirectX Uyumlulugunu Yamala ve APK Derle
       working-directory: ./Cross Platform/opengl/android
       run: |
         rm -f local.properties
@@ -37,7 +37,7 @@ jobs:
         python3 -c '
         import os, re
 
-        # 1. Tum klasor ve dosyalar icin hem tam kucuk harf (eterlib) hem de ilk harfi kucuk (eterLib) kisayollar olustur
+        # 1. Tum klasor ve dosyalar icin kucuk harf ve camelCase kisayollar olustur
         for target in ["clientsource", "Extern"]:
             if not os.path.exists(target): continue
             for root, dirs, files in os.walk(target, topdown=False):
@@ -52,7 +52,6 @@ jobs:
                             try: os.symlink(name, os.path.join(root, var))
                             except: pass
 
-        # 2. Gercek dosya yollarini haritala
         os.chdir("clientsource")
         real_paths = {}
         for root, dirs, files in os.walk("."):
@@ -60,7 +59,7 @@ jobs:
                 rel = os.path.relpath(os.path.join(root, name), ".").replace("\\", "/")
                 real_paths[rel.lower()] = rel
 
-        # 3. CMakeLists.txt icindeki yollari gercek harflerle duzelt
+        # 2. CMakeLists.txt icindeki yollari gercek harflerle duzelt
         with open("CMakeLists.txt", "r", encoding="utf-8", errors="ignore") as f:
             cmake = f.read().replace("\\", "/")
 
@@ -81,7 +80,7 @@ jobs:
         with open("CMakeLists.txt", "w", encoding="utf-8") as f:
             f.write(cmake)
 
-        # 4. C/C++ dosyalarinin icindeki #include satirlarindaki ters slaslari ve harf uyumsuzluklarini duzelt
+        # 3. C/C++ #include satirlarindaki ters slaslari duzelt
         inc_pattern = re.compile(r"(#\s*include\s*[\"<])([^\"<>]+)([\">])")
         for root, _, files in os.walk("."):
             for fname in files:
@@ -90,14 +89,50 @@ jobs:
                     try:
                         with open(fpath, "r", encoding="latin-1") as f:
                             content = f.read()
-                        def fix_inc(m):
-                            p = m.group(2).replace("\\", "/")
-                            return m.group(1) + p + m.group(3)
-                        new_content = inc_pattern.sub(fix_inc, content)
+                        new_content = inc_pattern.sub(lambda m: m.group(1) + m.group(2).replace("\\", "/") + m.group(3), content)
                         if new_content != content:
                             with open(fpath, "w", encoding="latin-1") as f:
                                 f.write(new_content)
                     except: pass
+
+        # 4. GrpOpenGL.h icindeki eksik Windows ve DirectX8 tiplerini en basa enjekte et
+        grp_path = real_paths.get("eterlib/grpopengl.h", "EterLib/GrpOpenGL.h")
+        if os.path.exists(grp_path):
+            with open(grp_path, "r", encoding="latin-1") as f:
+                grp_code = f.read()
+            dx_patch = """#pragma once
+#include "../android_compat/windows.h"
+#ifndef BYTE
+typedef unsigned char BYTE;
+#endif
+#ifndef CONST
+#define CONST const
+#endif
+#ifndef D3DFMT_A8R8G8B8
+#define D3DFMT_A8R8G8B8 21
+#endif
+typedef int D3DFORMAT;
+typedef int D3DPOOL;
+typedef void* LPDIRECT3DDEVICE8;
+typedef void* LPDIRECT3DTEXTURE8;
+typedef void* LPDIRECT3DSURFACE8;
+#ifndef D3DVIEWPORT8_DEFINED
+#define D3DVIEWPORT8_DEFINED
+typedef struct _D3DVIEWPORT8 {
+    unsigned int X; unsigned int Y; unsigned int Width; unsigned int Height;
+    float MinZ; float MaxZ;
+} D3DVIEWPORT8;
+#endif
+#ifndef D3DADAPTER_IDENTIFIER8_DEFINED
+#define D3DADAPTER_IDENTIFIER8_DEFINED
+typedef struct _D3DADAPTER_IDENTIFIER8 {
+    char Driver[512]; char Description[512]; unsigned int VendorId; unsigned int DeviceId;
+    unsigned int SubSysId; unsigned int Revision;
+} D3DADAPTER_IDENTIFIER8;
+#endif
+"""
+            with open(grp_path, "w", encoding="latin-1") as f:
+                f.write(dx_patch + "\n" + grp_code)
         '
         
         cd android
