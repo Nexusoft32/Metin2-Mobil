@@ -52,17 +52,28 @@ jobs:
                     with open(gpath, "r", encoding="latin-1") as f:
                         gcode = f.read()
 
-                    print("=== GRPOPENGL.H 450-SONU ARASI ===")
-                    for i, line in enumerate(gcode.splitlines()[449:], 450):
+                    print("=== GRPOPENGL.H 600-SONU ARASI ===")
+                    for i, line in enumerate(gcode.splitlines()[599:], 600):
                         print(f"{i}: {line}")
                     print("==================================")
 
-                    # 1. En tepeye eklenecek eksiksiz DirectX 8 veri tipleri ve yapilar (struct)
+                    # Eger dosya icinde asagilarda IDirect3DTexture8 vb. tanimlanmissa cift tanim olmamasi icin adlarini degistir
+                    gcode = re.sub(r"\bstruct\s+IDirect3DTexture8\b", "struct _Old_IDirect3DTexture8", gcode)
+                    gcode = re.sub(r"\bstruct\s+IDirect3DSurface8\b", "struct _Old_IDirect3DSurface8", gcode)
+                    gcode = re.sub(r"\bstruct\s+IDirect3DVertexBuffer8\b", "struct _Old_IDirect3DVertexBuffer8", gcode)
+                    gcode = re.sub(r"\bstruct\s+IDirect3DIndexBuffer8\b", "struct _Old_IDirect3DIndexBuffer8", gcode)
+                    gcode = re.sub(r"\bstruct\s+IDirect3DBaseTexture8\b", "struct _Old_IDirect3DBaseTexture8", gcode)
+
+                    # 1. En tepeye eklenecek TAM VE EKSIKSIZ DirectX 8 tipleri ve siniflari (Tamami IDirect3DDevice8'den once!)
                     top_lines = [
                         "#pragma once",
                         "#include <stdint.h>",
                         "#include <stdlib.h>",
                         "#include <string.h>",
+                        "#ifdef ANDROID",
+                        "#include <GLES2/gl2.h>",
+                        "#include <GLES2/gl2ext.h>",
+                        "#endif",
                         "typedef unsigned char BYTE;",
                         "typedef unsigned short WORD;",
                         "typedef unsigned long DWORD;",
@@ -89,6 +100,12 @@ jobs:
                         "typedef int D3DFORMAT;",
                         "typedef int D3DPOOL;",
                         "typedef int D3DDEVTYPE;",
+                        "typedef int D3DMULTISAMPLE_TYPE;",
+                        "typedef int D3DBACKBUFFER_TYPE;",
+                        "typedef int D3DPRIMITIVETYPE;",
+                        "typedef int D3DTEXTURESTAGESTATETYPE;",
+                        "typedef int D3DRENDERSTATETYPE;",
+                        "typedef int D3DTRANSFORMSTATETYPE;",
                         "#ifndef D3DFMT_A8R8G8B8",
                         "#define D3DFMT_UNKNOWN 0",
                         "#define D3DFMT_R8G8B8 20",
@@ -112,6 +129,17 @@ jobs:
                         "#define D3DPOOL_SYSTEMMEM 2",
                         "#define D3DPOOL_SCRATCH 3",
                         "#endif",
+                        "#ifndef D3DFVF_XYZ",
+                        "#define D3DFVF_XYZ 0x002",
+                        "#define D3DFVF_XYZRHW 0x004",
+                        "#define D3DFVF_NORMAL 0x010",
+                        "#define D3DFVF_DIFFUSE 0x040",
+                        "#define D3DFVF_SPECULAR 0x080",
+                        "#define D3DFVF_TEX1 0x100",
+                        "#define D3DFVF_TEX2 0x200",
+                        "#define D3DFVF_TEXCOUNT_MASK 0xf00",
+                        "#define D3DFVF_TEXCOUNT_SHIFT 8",
+                        "#endif",
                         "#define D3DDEVCAPS_HWTRANSFORMANDLIGHT 0x00010000L",
                         "#define D3DCAPS2_CANRENDERWINDOWED 0x00080000L",
                         "#define D3DVTXPCAPS_DIRECTIONALLIGHTS 0x00000008L",
@@ -124,20 +152,55 @@ jobs:
                         "typedef struct _D3DDISPLAYMODE { UINT Width; UINT Height; UINT RefreshRate; D3DFORMAT Format; } D3DDISPLAYMODE;",
                         "typedef struct _D3DCAPS8 { D3DDEVTYPE DeviceType; UINT AdapterOrdinal; DWORD Caps; DWORD Caps2; DWORD Caps3; DWORD PresentationIntervals; DWORD CursorCaps; DWORD DevCaps; DWORD PrimitiveMiscCaps; DWORD RasterCaps; DWORD ZCmpCaps; DWORD SrcBlendCaps; DWORD DestBlendCaps; DWORD AlphaCmpCaps; DWORD ShadeCaps; DWORD TextureCaps; DWORD TextureFilterCaps; DWORD CubeTextureFilterCaps; DWORD VolumeTextureFilterCaps; DWORD TextureAddressCaps; DWORD VolumeTextureAddressCaps; DWORD LineCaps; DWORD MaxTextureWidth; DWORD MaxTextureHeight; DWORD MaxVolumeExtent; DWORD MaxTextureRepeat; DWORD MaxTextureAspectRatio; DWORD MaxAnisotropy; float MaxVertexW; float GuardBandLeft; float GuardBandTop; float GuardBandRight; float GuardBandBottom; float ExtentsAdjust; DWORD StencilCaps; DWORD FVFCaps; DWORD TextureOpCaps; WORD MaxTextureBlendStages; WORD MaxSimultaneousTextures; DWORD VertexProcessingCaps; DWORD MaxActiveLights; WORD MaxUserClipPlanes; WORD MaxVertexBlendMatrices; DWORD MaxVertexBlendMatrixIndex; float MaxPointSize; DWORD MaxPrimitiveCount; DWORD MaxVertexIndex; DWORD MaxStreams; DWORD MaxStreamStride; DWORD VertexShaderVersion; DWORD MaxVertexShaderConst; DWORD PixelShaderVersion; float MaxPixelShaderValue; } D3DCAPS8;",
                         "typedef struct _D3DPRESENT_PARAMETERS_ { UINT BackBufferWidth; UINT BackBufferHeight; D3DFORMAT BackBufferFormat; UINT BackBufferCount; int MultiSampleType; DWORD SwapEffect; HWND hDeviceWindow; BOOL Windowed; BOOL EnableAutoDepthStencil; D3DFORMAT AutoDepthStencilFormat; DWORD Flags; UINT FullScreen_RefreshRateInHz; UINT FullScreen_PresentationInterval; } D3DPRESENT_PARAMETERS;",
+                        "typedef struct _D3DLOCKED_RECT { int Pitch; void* pBits; } D3DLOCKED_RECT;",
+                        "typedef struct _D3DSURFACE_DESC { D3DFORMAT Format; int Type; DWORD Usage; D3DPOOL Pool; UINT Size; int MultiSampleType; UINT Width; UINT Height; } D3DSURFACE_DESC;",
+                        "struct IDirect3DBaseTexture8 { virtual ~IDirect3DBaseTexture8() {} ULONG Release() { delete this; return 0; } };",
+                        "typedef IDirect3DBaseTexture8* LPDIRECT3DBaseTexture8;",
+                        "typedef IDirect3DBaseTexture8* LPDIRECT3DBASETEXTURE8;",
+                        "struct IDirect3DSurface8 {",
+                        "    UINT width, height;",
+                        "    IDirect3DSurface8() : width(0), height(0) {}",
+                        "    HRESULT LockRect(D3DLOCKED_RECT* pLockedRect, const RECT* pRect, DWORD Flags) { if(pLockedRect){ pLockedRect->Pitch=width*4; pLockedRect->pBits=malloc(width*height*4); } return S_OK; }",
+                        "    HRESULT UnlockRect() { return S_OK; }",
+                        "    HRESULT GetDesc(D3DSURFACE_DESC* pDesc) { if(pDesc){ pDesc->Width=width; pDesc->Height=height; } return S_OK; }",
+                        "    ULONG Release() { delete this; return 0; }",
+                        "};",
+                        "typedef IDirect3DSurface8* LPDIRECT3DSURFACE8;",
+                        "struct IDirect3DTexture8 : public IDirect3DBaseTexture8 {",
+                        "    GLuint glId;",
+                        "    UINT width, height;",
+                        "    IDirect3DTexture8() : glId(0), width(0), height(0) {}",
+                        "    HRESULT GetLevelDesc(UINT Level, D3DSURFACE_DESC* pDesc) { if(pDesc){ pDesc->Width=width; pDesc->Height=height; } return S_OK; }",
+                        "    HRESULT GetSurfaceLevel(UINT Level, IDirect3DSurface8** ppSurfaceLevel) { if(ppSurfaceLevel){ *ppSurfaceLevel = new IDirect3DSurface8(); (*ppSurfaceLevel)->width=width; (*ppSurfaceLevel)->height=height; } return S_OK; }",
+                        "    HRESULT LockRect(UINT Level, D3DLOCKED_RECT* pLockedRect, const RECT* pRect, DWORD Flags) { if(pLockedRect){ pLockedRect->Pitch=width*4; pLockedRect->pBits=malloc(width*height*4); } return S_OK; }",
+                        "    HRESULT UnlockRect(UINT Level) { return S_OK; }",
+                        "    ULONG Release() { if(glId) glDeleteTextures(1, &glId); delete this; return 0; }",
+                        "};",
+                        "typedef IDirect3DTexture8* LPDIRECT3DTEXTURE8;",
+                        "struct IDirect3DVertexBuffer8 {",
+                        "    GLuint glVbo;",
+                        "    UINT length;",
+                        "    std::vector<BYTE> data;",
+                        "    IDirect3DVertexBuffer8(UINT len=0) : glVbo(0), length(len), data(len) { glGenBuffers(1, &glVbo); }",
+                        "    HRESULT Lock(UINT OffsetToLock, UINT SizeToLock, BYTE** ppbData, DWORD Flags) { if(ppbData) *ppbData = data.data() + OffsetToLock; return S_OK; }",
+                        "    HRESULT Unlock() { glBindBuffer(GL_ARRAY_BUFFER, glVbo); glBufferData(GL_ARRAY_BUFFER, length, data.data(), GL_STATIC_DRAW); return S_OK; }",
+                        "    ULONG Release() { if(glVbo) glDeleteBuffers(1, &glVbo); delete this; return 0; }",
+                        "};",
+                        "typedef IDirect3DVertexBuffer8* LPDIRECT3DVERTEXBUFFER8;",
+                        "struct IDirect3DIndexBuffer8 {",
+                        "    GLuint glIbo;",
+                        "    UINT length;",
+                        "    std::vector<BYTE> data;",
+                        "    IDirect3DIndexBuffer8(UINT len=0) : glIbo(0), length(len), data(len) { glGenBuffers(1, &glIbo); }",
+                        "    HRESULT Lock(UINT OffsetToLock, UINT SizeToLock, BYTE** ppbData, DWORD Flags) { if(ppbData) *ppbData = data.data() + OffsetToLock; return S_OK; }",
+                        "    HRESULT Unlock() { glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, glIbo); glBufferData(GL_ELEMENT_ARRAY_BUFFER, length, data.data(), GL_STATIC_DRAW); return S_OK; }",
+                        "    ULONG Release() { if(glIbo) glDeleteBuffers(1, &glIbo); delete this; return 0; }",
+                        "};",
+                        "typedef IDirect3DIndexBuffer8* LPDIRECT3DINDEXBUFFER8;",
                         "struct IDirect3DDevice8;",
-                        "struct IDirect3DTexture8;",
-                        "struct IDirect3DSurface8;",
-                        "struct IDirect3DVertexBuffer8;",
-                        "struct IDirect3DIndexBuffer8;",
-                        "typedef struct IDirect3DDevice8* LPDIRECT3DDEVICE8;",
-                        "typedef struct IDirect3DTexture8* LPDIRECT3DTEXTURE8;",
-                        "typedef struct IDirect3DSurface8* LPDIRECT3DSURFACE8;",
-                        "typedef struct IDirect3DVertexBuffer8* LPDIRECT3DVERTEXBUFFER8;",
-                        "typedef struct IDirect3DIndexBuffer8* LPDIRECT3DINDEXBUFFER8;"
+                        "typedef struct IDirect3DDevice8* LPDIRECT3DDEVICE8;"
                     ]
 
-                    # 2. 330-350. satirdaki 3 erken fonksiyonu (D3DXCreateTexture vb.) kesmeden devre disi birakip en sona kopyala
-                    # ve 384. satirdaki IDirect3D8 icinde new IDirect3DDevice8() cagrildigi icin IDirect3D8 sinifini da IDirect3DDevice8'in altina kopyala!
                     gcode = gcode.replace(
                         "inline HRESULT D3DXCreateTexture(",
                         "#if 0\ninline HRESULT D3DXCreateTexture("
@@ -146,14 +209,13 @@ jobs:
                         "#endif\n#define D3DVSD_STREAM(s) (s)"
                     )
 
-                    # IDirect3D8 sinifinin (384-441. satirlar) icindeki CreateDevice fonksiyonu new IDirect3DDevice8() kullandigi icin
-                    # onu inline olarak dosyanin en sonunda tanimlayalim
                     gcode = gcode.replace(
                         "HRESULT CreateDevice(UINT, int, HWND hWnd, DWORD, D3DPRESENT_PARAMETERS*, IDirect3DDevice8** ppDevice) {",
                         "HRESULT CreateDevice(UINT, int, HWND hWnd, DWORD, D3DPRESENT_PARAMETERS*, IDirect3DDevice8** ppDevice);\n#if 0\nHRESULT OldCreateDevice() {"
                     ).replace(
                         "ULONG Release() { delete this; return 0; }",
-                        "#endif\nULONG Release() { delete this; return 0; }"
+                        "#endif\nULONG Release() { delete this; return 0; }",
+                        1
                     )
 
                     bottom_lines = [
@@ -254,7 +316,7 @@ jobs:
         if [ $EXIT_CODE -ne 0 ]; then
           echo "================ GERCEK HATA BURADA ================"
           grep -i -E "error:|fatal error:|cannot find|undefined reference|CMake Error|FAILURE:" build_log.txt -B 1 -A 2 | head -n 55
-          echo "---------------- DOSYA YAPISI (450-SONU) ----------------"
+          echo "---------------- DOSYA YAPISI (600-SONU) ----------------"
           cat ../fix_log.txt | head -n 160
           echo "========================================================="
           exit $EXIT_CODE
