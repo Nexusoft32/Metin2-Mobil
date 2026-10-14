@@ -58,46 +58,47 @@ jobs:
                         print(f"{i}: {line}")
                     print("=================================")
 
-                    # Dosyanin altinda tanimlanan ama ustte kullanilan makrolari ve tipleri en basa ekle
-                    top_patch = """#pragma once
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-typedef unsigned char BYTE;
-typedef unsigned short WORD;
-typedef unsigned long DWORD;
-typedef unsigned long ULONG;
-typedef int32_t LONG;
-typedef unsigned int UINT;
-typedef int BOOL;
-typedef long HRESULT;
-typedef const void* LPCVOID;
-typedef void* LPVOID;
-typedef void* HWND;
-#ifndef CONST
-#define CONST const
-#endif
-#ifndef S_OK
-#define S_OK ((HRESULT)0L)
-#endif
-#ifndef D3DFMT_A8R8G8B8
-#define D3DFMT_A8R8G8B8 21
-#endif
-#ifndef D3DPOOL_MANAGED
-#define D3DPOOL_MANAGED 1
-#endif
-#ifndef D3DDEVCAPS_HWTRANSFORMANDLIGHT
-#define D3DDEVCAPS_HWTRANSFORMANDLIGHT 0x00010000L
-#define D3DCAPS2_CANRENDERWINDOWED 0x00080000L
-#define D3DVTXPCAPS_DIRECTIONALLIGHTS 0x00000008L
-#define D3DVTXPCAPS_POSITIONALLIGHTS 0x00000010L
-#define D3DVTXPCAPS_TEXGEN 0x00000001L
-#define D3DPMISCCAPS_CLIPTLVERTS 0x00000200L
-#define D3DPTADDRESSCAPS_BORDER 0x00000008L
-#endif
-"""
-                    # Eger dosya icinde asagida tanimlanan struct/class varsa ve yukarida kullaniliyorsa:
-                    # 325-415. satirlardaki erken kullanilan fonksiyonlari dosyanin en sonuna tasiyalim!
+                    top_lines = [
+                        "#pragma once",
+                        "#include <stdint.h>",
+                        "#include <stdlib.h>",
+                        "#include <string.h>",
+                        "typedef unsigned char BYTE;",
+                        "typedef unsigned short WORD;",
+                        "typedef unsigned long DWORD;",
+                        "typedef unsigned long ULONG;",
+                        "typedef int32_t LONG;",
+                        "typedef unsigned int UINT;",
+                        "typedef int BOOL;",
+                        "typedef long HRESULT;",
+                        "typedef const void* LPCVOID;",
+                        "typedef void* LPVOID;",
+                        "typedef void* HWND;",
+                        "#ifndef CONST",
+                        "#define CONST const",
+                        "#endif",
+                        "#ifndef S_OK",
+                        "#define S_OK ((HRESULT)0L)",
+                        "#endif",
+                        "#ifndef D3DFMT_A8R8G8B8",
+                        "#define D3DFMT_A8R8G8B8 21",
+                        "#endif",
+                        "#ifndef D3DPOOL_MANAGED",
+                        "#define D3DPOOL_MANAGED 1",
+                        "#endif",
+                        "#ifndef D3DDEVCAPS_HWTRANSFORMANDLIGHT",
+                        "#define D3DDEVCAPS_HWTRANSFORMANDLIGHT 0x00010000L",
+                        "#define D3DCAPS2_CANRENDERWINDOWED 0x00080000L",
+                        "#define D3DVTXPCAPS_DIRECTIONALLIGHTS 0x00000008L",
+                        "#define D3DVTXPCAPS_POSITIONALLIGHTS 0x00000010L",
+                        "#define D3DVTXPCAPS_TEXGEN 0x00000001L",
+                        "#define D3DPMISCCAPS_CLIPTLVERTS 0x00000200L",
+                        "#define D3DPTADDRESSCAPS_BORDER 0x00000008L",
+                        "#endif"
+                    ]
+                    top_patch = "\n".join(top_lines)
+
+                    # Erken kullanilan fonksiyonlari dosyanin en sonuna (IDirect3DDevice8 taniminin altina) tasi
                     lines = gcode.splitlines()
                     early_funcs = []
                     new_lines = []
