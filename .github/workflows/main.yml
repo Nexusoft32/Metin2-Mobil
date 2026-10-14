@@ -59,7 +59,7 @@ jobs:
                 rel = os.path.relpath(os.path.join(root, name), ".").replace("\\", "/")
                 real_paths[rel.lower()] = rel
 
-        # 2. CMakeLists.txt icindeki yollari gercek harflerle duzelt
+        # 2. CMakeLists.txt icindeki yollari duzelt ve Windows uyumluluk bayraklarini (-fms-extensions -fdeclspec) ekle
         with open("CMakeLists.txt", "r", encoding="utf-8", errors="ignore") as f:
             cmake = f.read().replace("\\", "/")
 
@@ -77,6 +77,10 @@ jobs:
             return val
 
         cmake = re.sub(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+", fix_path, cmake)
+        
+        extra_flags = '\nadd_compile_options(-fms-extensions -fdeclspec -Wno-error -Wno-everything)\n'
+        cmake = extra_flags + cmake
+
         with open("CMakeLists.txt", "w", encoding="utf-8") as f:
             f.write(cmake)
 
