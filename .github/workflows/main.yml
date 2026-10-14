@@ -28,52 +28,30 @@ jobs:
       with:
         gradle-version: '8.13'
 
-    - name: Tum Dosya Harflerini Eslestir ve APK Derle
+    - name: Dosya Harflerini Duzelt ve APK Derle
       working-directory: ./Cross Platform/opengl/android
       run: |
         rm -f local.properties
         cd ..
         
-        python3 -c '
-        import os, re
+        # 1. Sadece clientsource ve Extern icindeki tum klasor ve dosyalarin kucuk harfli kopyasini olustur (Java'ya dokunmaz!)
+        find clientsource Extern -depth | while read -r path; do
+          dir=$(dirname "$path")
+          base=$(basename "$path")
+          low=$(echo "$base" | tr '[:upper:]' '[:lower:]')
+          if [ "$base" != "$low" ] && [ ! -e "$dir/$low" ]; then
+            ln -s "$base" "$dir/$low" || true
+          fi
+        done
 
-        # 1. SADECE C++ klasorlerinde (clientsource ve Extern) kucuk harfli kisayollar olustur (android klasorune dokunma!)
-        for target_dir in ["clientsource", "Extern"]:
-            if not os.path.exists(target_dir): continue
-            for root, dirs, files in os.walk(target_dir, topdown=False):
-                for name in files + dirs:
-                    if name.endswith(".java"): continue
-                    low = name.lower()
-                    if name != low:
-                        src = os.path.join(root, name)
-                        dst = os.path.join(root, low)
-                        if not os.path.exists(dst):
-                            try:
-                                os.symlink(name, dst)
-                            except Exception:
-                                pass
+        # 2. CMakeLists.txt icindeki ters slaslari ve harf uyumsuzluklarini duzelt
+        cd clientsource
+        sed -i 's/\\/\//g' CMakeLists.txt
+        sed -i 's/eterPack\/eterPack.cpp/eterPack\/EterPack.cpp/gI' CMakeLists.txt
+        sed -i 's/userinterface/UserInterface/gI' CMakeLists.txt
 
-        # 2. CMakeLists.txt icindeki tum dosya yollarini gercek buyuk/kucuk harflerle degistir
-        os.chdir("clientsource")
-        file_map = {}
-        for root, dirs, files in os.walk("."):
-            for name in files + dirs:
-                rel = os.path.relpath(os.path.join(root, name), ".").replace("\\", "/")
-                file_map[rel.lower()] = rel
-
-        with open("CMakeLists.txt", "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read().replace("\\", "/")
-
-        for lower_path, real_path in sorted(file_map.items(), key=lambda x: -len(x[0])):
-            if lower_path != real_path and len(lower_path) > 3:
-                pattern = re.compile(re.escape(lower_path), re.IGNORECASE)
-                content = pattern.sub(real_path, content)
-
-        with open("CMakeLists.txt", "w", encoding="utf-8") as f:
-            f.write(content)
-        '
-        
-        cd android
+        # 3. APK Derlemesini Baslat
+        cd ../android
         set +e
         gradle assembleDebug > build_log.txt 2>&1
         EXIT_CODE=$?
