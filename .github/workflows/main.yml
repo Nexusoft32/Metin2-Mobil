@@ -34,7 +34,7 @@ jobs:
         rm -f local.properties
         cd ..
         
-        python3 -c '
+        cat << 'EOF' > fix_all.py
         import os, re
 
         # 1. Tum klasor ve dosyalar icin kucuk harf ve camelCase kisayollar olustur
@@ -100,40 +100,37 @@ jobs:
         if os.path.exists(grp_path):
             with open(grp_path, "r", encoding="latin-1") as f:
                 grp_code = f.read()
-            dx_patch = """#pragma once
-#include "../android_compat/windows.h"
-#ifndef BYTE
-typedef unsigned char BYTE;
-#endif
-#ifndef CONST
-#define CONST const
-#endif
-#ifndef D3DFMT_A8R8G8B8
-#define D3DFMT_A8R8G8B8 21
-#endif
-typedef int D3DFORMAT;
-typedef int D3DPOOL;
-typedef void* LPDIRECT3DDEVICE8;
-typedef void* LPDIRECT3DTEXTURE8;
-typedef void* LPDIRECT3DSURFACE8;
-#ifndef D3DVIEWPORT8_DEFINED
-#define D3DVIEWPORT8_DEFINED
-typedef struct _D3DVIEWPORT8 {
-    unsigned int X; unsigned int Y; unsigned int Width; unsigned int Height;
-    float MinZ; float MaxZ;
-} D3DVIEWPORT8;
-#endif
-#ifndef D3DADAPTER_IDENTIFIER8_DEFINED
-#define D3DADAPTER_IDENTIFIER8_DEFINED
-typedef struct _D3DADAPTER_IDENTIFIER8 {
-    char Driver[512]; char Description[512]; unsigned int VendorId; unsigned int DeviceId;
-    unsigned int SubSysId; unsigned int Revision;
-} D3DADAPTER_IDENTIFIER8;
-#endif
-"""
+            patch_lines = [
+                '#pragma once',
+                '#include "../android_compat/windows.h"',
+                '#ifndef BYTE',
+                'typedef unsigned char BYTE;',
+                '#endif',
+                '#ifndef CONST',
+                '#define CONST const',
+                '#endif',
+                '#ifndef D3DFMT_A8R8G8B8',
+                '#define D3DFMT_A8R8G8B8 21',
+                '#endif',
+                'typedef int D3DFORMAT;',
+                'typedef int D3DPOOL;',
+                'typedef void* LPDIRECT3DDEVICE8;',
+                'typedef void* LPDIRECT3DTEXTURE8;',
+                'typedef void* LPDIRECT3DSURFACE8;',
+                '#ifndef D3DVIEWPORT8_DEFINED',
+                '#define D3DVIEWPORT8_DEFINED',
+                'typedef struct _D3DVIEWPORT8 { unsigned int X, Y, Width, Height; float MinZ, MaxZ; } D3DVIEWPORT8;',
+                '#endif',
+                '#ifndef D3DADAPTER_IDENTIFIER8_DEFINED',
+                '#define D3DADAPTER_IDENTIFIER8_DEFINED',
+                'typedef struct _D3DADAPTER_IDENTIFIER8 { char Driver[512]; char Description[512]; unsigned int VendorId, DeviceId, SubSysId, Revision; } D3DADAPTER_IDENTIFIER8;',
+                '#endif'
+            ]
             with open(grp_path, "w", encoding="latin-1") as f:
-                f.write(dx_patch + "\n" + grp_code)
-        '
+                f.write("\n".join(patch_lines) + "\n" + grp_code)
+        EOF
+        
+        python3 fix_all.py
         
         cd android
         set +e
