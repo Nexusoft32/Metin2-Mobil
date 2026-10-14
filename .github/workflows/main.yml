@@ -28,30 +28,59 @@ jobs:
       with:
         gradle-version: '8.13'
 
-    - name: Dosya Harflerini Duzelt ve APK Derle
+    - name: Tum Dosya Harflerini Otomatik Eslestir ve APK Derle
       working-directory: ./Cross Platform/opengl/android
       run: |
         rm -f local.properties
         cd ..
         
-        # 1. Sadece clientsource ve Extern icindeki tum klasor ve dosyalarin kucuk harfli kopyasini olustur (Java'ya dokunmaz!)
-        find clientsource Extern -depth | while read -r path; do
-          dir=$(dirname "$path")
-          base=$(basename "$path")
-          low=$(echo "$base" | tr '[:upper:]' '[:lower:]')
-          if [ "$base" != "$low" ] && [ ! -e "$dir/$low" ]; then
-            ln -s "$base" "$dir/$low" || true
-          fi
-        done
+        python3 -c '
+        import os, re
 
-        # 2. CMakeLists.txt icindeki ters slaslari ve harf uyumsuzluklarini duzelt
-        cd clientsource
-        sed -i 's/\\/\//g' CMakeLists.txt
-        sed -i 's/eterPack\/eterPack.cpp/eterPack\/EterPack.cpp/gI' CMakeLists.txt
-        sed -i 's/userinterface/UserInterface/gI' CMakeLists.txt
+        # 1. CMakeLists.txt icindeki TUM dosya ve klasor yollarini gercek adlariyla otomatik degistir
+        os.chdir("clientsource")
+        real_paths = {}
+        real_names = {}
+        for root, dirs, files in os.walk("."):
+            for name in dirs + files:
+                rel = os.path.relpath(os.path.join(root, name), ".").replace("\\", "/")
+                real_paths[rel.lower()] = rel
+                real_names[name.lower()] = name
 
-        # 3. APK Derlemesini Baslat
-        cd ../android
+        with open("CMakeLists.txt", "r", encoding="utf-8", errors="ignore") as f:
+            cmake = f.read().replace("\\", "/")
+
+        def fix_cmake_path(match):
+            val = match.group(0)
+            low = val.lower()
+            if low in real_paths:
+                return real_paths[low]
+            parts = val.split("/")
+            if len(parts) == 2 and parts[0].lower() in real_paths:
+                real_dir = real_paths[parts[0].lower()]
+                comb = (real_dir + "/" + parts[1]).lower()
+                if comb in real_paths:
+                    return real_paths[comb]
+            return val
+
+        cmake = re.sub(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+", fix_cmake_path, cmake)
+
+        with open("CMakeLists.txt", "w", encoding="utf-8") as f:
+            f.write(cmake)
+
+        # 2. C++ kodlarinin icindeki #include satirlarindaki harf uyumsuzluklarini da duzelt
+        os.chdir("..")
+        for target in ["clientsource", "Extern"]:
+            if not os.path.exists(target): continue
+            for root, dirs, files in os.walk(target, topdown=False):
+                for name in files + dirs:
+                    low = name.lower()
+                    if name != low and not os.path.exists(os.path.join(root, low)):
+                        try: os.symlink(name, os.path.join(root, low))
+                        except: pass
+        '
+        
+        cd android
         set +e
         gradle assembleDebug > build_log.txt 2>&1
         EXIT_CODE=$?
