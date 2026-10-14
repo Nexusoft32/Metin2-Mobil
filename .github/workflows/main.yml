@@ -37,7 +37,87 @@ jobs:
         cat << 'EOF' > fix_all.py
         import os, re
 
-        # 1. Tum klasor ve dosyalar icin kucuk harf ve camelCase kisayollar olustur
+        # 1. GrpOpenGL.h ve windows.h dosyalarini sembolik linklerden ONCE gercek yollariyla bul ve yamala
+        for root, dirs, files in os.walk("clientsource"):
+            for fname in files:
+                if fname.lower() == "windows.h" and "android_compat" in root.lower():
+                    wpath = os.path.join(root, fname)
+                    with open(wpath, "r", encoding="latin-1") as f:
+                        wcode = f.read()
+                    wcode = wcode.replace("typedef uint32_t DWORD;", "typedef unsigned long DWORD;")
+                    with open(wpath, "w", encoding="latin-1") as f:
+                        f.write(wcode)
+
+                if fname.lower() == "grpopengl.h":
+                    gpath = os.path.join(root, fname)
+                    with open(gpath, "r", encoding="latin-1") as f:
+                        gcode = f.read()
+
+                    print("=== GRPOPENGL.H 300-800 ARASI ===")
+                    for i, line in enumerate(gcode.splitlines()[299:800], 300):
+                        print(f"{i}: {line}")
+                    print("=================================")
+
+                    # Dosyanin altinda tanimlanan ama ustte kullanilan makrolari ve tipleri en basa ekle
+                    top_patch = """#pragma once
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+typedef unsigned char BYTE;
+typedef unsigned short WORD;
+typedef unsigned long DWORD;
+typedef unsigned long ULONG;
+typedef int32_t LONG;
+typedef unsigned int UINT;
+typedef int BOOL;
+typedef long HRESULT;
+typedef const void* LPCVOID;
+typedef void* LPVOID;
+typedef void* HWND;
+#ifndef CONST
+#define CONST const
+#endif
+#ifndef S_OK
+#define S_OK ((HRESULT)0L)
+#endif
+#ifndef D3DFMT_A8R8G8B8
+#define D3DFMT_A8R8G8B8 21
+#endif
+#ifndef D3DPOOL_MANAGED
+#define D3DPOOL_MANAGED 1
+#endif
+#ifndef D3DDEVCAPS_HWTRANSFORMANDLIGHT
+#define D3DDEVCAPS_HWTRANSFORMANDLIGHT 0x00010000L
+#define D3DCAPS2_CANRENDERWINDOWED 0x00080000L
+#define D3DVTXPCAPS_DIRECTIONALLIGHTS 0x00000008L
+#define D3DVTXPCAPS_POSITIONALLIGHTS 0x00000010L
+#define D3DVTXPCAPS_TEXGEN 0x00000001L
+#define D3DPMISCCAPS_CLIPTLVERTS 0x00000200L
+#define D3DPTADDRESSCAPS_BORDER 0x00000008L
+#endif
+"""
+                    # Eger dosya icinde asagida tanimlanan struct/class varsa ve yukarida kullaniliyorsa:
+                    # 325-415. satirlardaki erken kullanilan fonksiyonlari dosyanin en sonuna tasiyalim!
+                    lines = gcode.splitlines()
+                    early_funcs = []
+                    new_lines = []
+                    in_early = False
+                    for line in lines:
+                        if "inline HRESULT D3DXCreateTexture(" in line or "inline HRESULT D3DXCreateTextureFromFileInMemoryEx(" in line or "inline HRESULT D3DXLoadSurfaceFromSurface(" in line:
+                            in_early = True
+                        if in_early:
+                            early_funcs.append(line)
+                            if line.strip() == "}":
+                                in_early = False
+                        else:
+                            new_lines.append(line)
+
+                    fixed_code = top_patch + "\n" + "\n".join(new_lines) + "\n" + "\n".join(early_funcs) + "\n"
+                    with open(gpath, "w", encoding="latin-1") as f:
+                        f.write(fixed_code)
+                    print("GrpOpenGL.h BASARIYLA YAMALANDI:", gpath)
+
+        # 2. Tum klasor ve dosyalar icin kucuk harf ve camelCase kisayollar olustur
         for target in ["clientsource", "Extern"]:
             if not os.path.exists(target): continue
             for root, dirs, files in os.walk(target, topdown=False):
@@ -59,7 +139,7 @@ jobs:
                 rel = os.path.relpath(os.path.join(root, name), ".").replace("\\", "/")
                 real_paths[rel.lower()] = rel
 
-        # 2. CMakeLists.txt icindeki yollari duzelt ve Windows uyumluluk bayraklarini ekle
+        # 3. CMakeLists.txt icindeki yollari duzelt ve Windows uyumluluk bayraklarini ekle
         with open("CMakeLists.txt", "r", encoding="utf-8", errors="ignore") as f:
             cmake = f.read().replace("\\", "/")
 
@@ -83,7 +163,7 @@ jobs:
         with open("CMakeLists.txt", "w", encoding="utf-8") as f:
             f.write(cmake)
 
-        # 3. C/C++ #include satirlarindaki ters slaslari duzelt
+        # 4. C/C++ #include satirlarindaki ters slaslari duzelt
         inc_pattern = re.compile(r"(#\s*include\s*[\"<])([^\"<>]+)([\">])")
         for root, _, files in os.walk("."):
             for fname in files:
@@ -97,96 +177,6 @@ jobs:
                             with open(fpath, "w", encoding="latin-1") as f:
                                 f.write(new_content)
                     except: pass
-
-        # 4. windows.h ve GrpOpenGL.h icindeki tip cakismalarini ve eksik DirectX 8 tanimlarini coz
-        win_path = real_paths.get("android_compat/windows.h", "android_compat/windows.h")
-        if os.path.exists(win_path):
-            with open(win_path, "r", encoding="latin-1") as f:
-                wcode = f.read()
-            wcode = wcode.replace("typedef uint32_t DWORD;", "typedef unsigned long DWORD;")
-            with open(win_path, "w", encoding="latin-1") as f:
-                f.write(wcode)
-
-        grp_path = real_paths.get("eterlib/grpopengl.h", "EterLib/GrpOpenGL.h")
-        if os.path.exists(grp_path):
-            with open(grp_path, "r", encoding="latin-1") as f:
-                grp_code = f.read()
-
-            # GrpOpenGL.h nin 190. satirdan sonrasini loga yazdir ki icinde ne var tam gorelim
-            print("=== GRPOPENGL.H 190-550 ARASI ===")
-            for i, line in enumerate(grp_code.splitlines()[185:550], 186):
-                print(f"{i}: {line}")
-            print("=================================")
-
-            # Eger bu tipler GrpOpenGL.h icinde asagilarda bir yerde tanimliysa, cift tanim (redefinition) olmamasi icin onlari koruma altina alalim veya en uste tasiyalim
-            top_fix = "\n".join([
-                "#pragma once",
-                "#include <stdint.h>",
-                "#include <stdlib.h>",
-                "#include <string.h>",
-                "typedef unsigned char BYTE;",
-                "typedef unsigned short WORD;",
-                "typedef unsigned long DWORD;",
-                "typedef unsigned long ULONG;",
-                "typedef int32_t LONG;",
-                "typedef unsigned int UINT;",
-                "typedef int BOOL;",
-                "typedef long HRESULT;",
-                "typedef const void* LPCVOID;",
-                "typedef void* LPVOID;",
-                "typedef void* HWND;",
-                "typedef unsigned long D3DCOLOR;",
-                "#ifndef CONST",
-                "#define CONST const",
-                "#endif",
-                "#ifndef S_OK",
-                "#define S_OK ((HRESULT)0L)",
-                "#endif",
-                "#ifndef RECT_DEFINED",
-                "#define RECT_DEFINED",
-                "typedef struct tagRECT { LONG left; LONG top; LONG right; LONG bottom; } RECT;",
-                "#endif",
-                "#ifndef D3DFORMAT_DEFINED",
-                "#define D3DFORMAT_DEFINED",
-                "typedef int D3DFORMAT;",
-                "typedef int D3DPOOL;",
-                "typedef int D3DDEVTYPE;",
-                "#define D3DFMT_UNKNOWN 0",
-                "#define D3DFMT_R8G8B8 20",
-                "#define D3DFMT_A8R8G8B8 21",
-                "#define D3DFMT_X8R8G8B8 22",
-                "#define D3DFMT_R5G6B5 23",
-                "#define D3DFMT_A1R5G5B5 25",
-                "#define D3DFMT_A4R4G4B4 26",
-                "#define D3DFMT_A8 28",
-                "#define D3DFMT_DXT1 827611204",
-                "#define D3DFMT_DXT3 861165636",
-                "#define D3DFMT_DXT5 894720068",
-                "#define D3DFMT_D16 80",
-                "#define D3DFMT_D24S8 75",
-                "#define D3DFMT_INDEX16 101",
-                "#define D3DFMT_INDEX32 102",
-                "#define D3DPOOL_DEFAULT 0",
-                "#define D3DPOOL_MANAGED 1",
-                "#define D3DPOOL_SYSTEMMEM 2",
-                "#define D3DPOOL_SCRATCH 3",
-                "#define D3DDEVCAPS_HWTRANSFORMANDLIGHT 0x00010000L",
-                "#define D3DCAPS2_CANRENDERWINDOWED 0x00080000L",
-                "#endif",
-                "#ifndef D3DSTRUCTS_DEFINED",
-                "#define D3DSTRUCTS_DEFINED",
-                "typedef struct _D3DVIEWPORT8 { DWORD X; DWORD Y; DWORD Width; DWORD Height; float MinZ; float MaxZ; } D3DVIEWPORT8;",
-                "typedef struct _D3DADAPTER_IDENTIFIER8 { char Driver[512]; char Description[512]; DWORD DriverVersionLowPart; DWORD DriverVersionHighPart; DWORD VendorId; DWORD DeviceId; DWORD SubSysId; DWORD Revision; } D3DADAPTER_IDENTIFIER8;",
-                "typedef struct _D3DDISPLAYMODE { UINT Width; UINT Height; UINT RefreshRate; D3DFORMAT Format; } D3DDISPLAYMODE;",
-                "typedef struct _D3DCAPS8 { D3DDEVTYPE DeviceType; UINT AdapterOrdinal; DWORD Caps; DWORD Caps2; DWORD Caps3; DWORD PresentationIntervals; DWORD CursorCaps; DWORD DevCaps; DWORD PrimitiveMiscCaps; DWORD RasterCaps; DWORD ZCmpCaps; DWORD SrcBlendCaps; DWORD DestBlendCaps; DWORD AlphaCmpCaps; DWORD ShadeCaps; DWORD TextureCaps; DWORD TextureFilterCaps; DWORD CubeTextureFilterCaps; DWORD VolumeTextureFilterCaps; DWORD TextureAddressCaps; DWORD VolumeTextureAddressCaps; DWORD LineCaps; DWORD MaxTextureWidth; DWORD MaxTextureHeight; DWORD MaxVolumeExtent; DWORD MaxTextureRepeat; DWORD MaxTextureAspectRatio; DWORD MaxAnisotropy; float MaxVertexW; float GuardBandLeft; float GuardBandTop; float GuardBandRight; float GuardBandBottom; float ExtentsAdjust; DWORD StencilCaps; DWORD FVFCaps; DWORD TextureOpCaps; WORD MaxTextureBlendStages; WORD MaxSimultaneousTextures; DWORD VertexProcessingCaps; DWORD MaxActiveLights; WORD MaxUserClipPlanes; WORD MaxVertexBlendMatrices; DWORD MaxVertexBlendMatrixIndex; float MaxPointSize; DWORD MaxPrimitiveCount; DWORD MaxVertexIndex; DWORD MaxStreams; DWORD MaxStreamStride; DWORD VertexShaderVersion; DWORD MaxVertexShaderConst; DWORD PixelShaderVersion; float MaxPixelShaderValue; } D3DCAPS8;",
-                "typedef struct _D3DPRESENT_PARAMETERS_ { UINT BackBufferWidth; UINT BackBufferHeight; D3DFORMAT BackBufferFormat; UINT BackBufferCount; int MultiSampleType; DWORD SwapEffect; HWND hDeviceWindow; BOOL Windowed; BOOL EnableAutoDepthStencil; D3DFORMAT AutoDepthStencilFormat; DWORD Flags; UINT FullScreen_RefreshRateInHz; UINT FullScreen_PresentationInterval; } D3DPRESENT_PARAMETERS;",
-                "#endif"
-            ])
-
-            # GrpOpenGL.h icinde IDirect3DDevice8 sinifi 370. satirdan sonra tanimlaniyor ama 350. satirda kullaniliyor!
-            # Bu yuzden 350. satirdaki fonksiyonlari IDirect3DDevice8 taniminin altina tasiyalim veya forward declare edelim
-            with open(grp_path, "w", encoding="latin-1") as f:
-                f.write(top_fix + "\n" + grp_code)
         EOF
         
         python3 fix_all.py > fix_log.txt 2>&1
@@ -198,8 +188,8 @@ jobs:
         if [ $EXIT_CODE -ne 0 ]; then
           echo "================ GERCEK HATA BURADA ================"
           grep -i -E "error:|fatal error:|cannot find|undefined reference|CMake Error|FAILURE:" build_log.txt -B 1 -A 2 | head -n 45
-          echo "---------------- DOSYA YAPISI (190-550) ----------------"
-          cat ../fix_log.txt | head -n 120
+          echo "---------------- DOSYA YAPISI (300-800) ----------------"
+          cat ../fix_log.txt | head -n 160
           echo "========================================================"
           exit $EXIT_CODE
         fi
