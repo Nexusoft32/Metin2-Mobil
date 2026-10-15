@@ -34,6 +34,83 @@ jobs:
       run: |
         import os, re
 
+        # 1. Eksik Windows baslik dosyalarini (io.h, direct.h, process.h vb.) android_compat icine olustur
+        compat_dir = "clientsource/android_compat"
+        os.makedirs(compat_dir, exist_ok=True)
+
+        compat_files = {
+            "io.h": """#pragma once
+        #include <unistd.h>
+        #include <fcntl.h>
+        #include <sys/stat.h>
+        #include <sys/types.h>
+        #ifndef _access
+        #define _access access
+        #endif
+        #ifndef _close
+        #define _close close
+        #endif
+        #ifndef _read
+        #define _read read
+        #endif
+        #ifndef _write
+        #define _write write
+        #endif
+        #ifndef _open
+        #define _open open
+        #endif
+        #ifndef _lseek
+        #define _lseek lseek
+        #endif
+        #ifndef _tell
+        #define _tell(fd) lseek(fd, 0, SEEK_CUR)
+        #endif
+        """,
+            "direct.h": """#pragma once
+        #include <unistd.h>
+        #include <sys/stat.h>
+        #include <sys/types.h>
+        #ifndef _mkdir
+        #define _mkdir(p) mkdir(p, 0777)
+        #endif
+        #ifndef _getcwd
+        #define _getcwd getcwd
+        #endif
+        #ifndef _chdir
+        #define _chdir chdir
+        #endif
+        """,
+            "process.h": """#pragma once
+        #include <unistd.h>
+        #include <stdlib.h>
+        """,
+            "crtdbg.h": """#pragma once
+        #ifndef _ASSERT
+        #define _ASSERT(x)
+        #endif
+        #ifndef _ASSERTE
+        #define _ASSERTE(x)
+        #endif
+        """,
+            "basetsd.h": """#pragma once
+        #include <stdint.h>
+        typedef intptr_t INT_PTR, *PINT_PTR;
+        typedef uintptr_t UINT_PTR, *PUINT_PTR;
+        typedef intptr_t LONG_PTR, *PLONG_PTR;
+        typedef uintptr_t ULONG_PTR, *PULONG_PTR;
+        typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
+        typedef ULONG_PTR SIZE_T, *PSIZE_T;
+        typedef LONG_PTR SSIZE_T, *PSSIZE_T;
+        """
+        }
+
+        for cf_name, cf_body in compat_files.items():
+            cf_path = os.path.join(compat_dir, cf_name)
+            if not os.path.exists(cf_path):
+                with open(cf_path, "w", encoding="latin-1") as f:
+                    f.write(cf_body)
+
+        # 2. clientsource ve Extern icindeki tum dosyalarda uyumsuzluklari ve eksik typename'leri duzelt
         for target_root in ["clientsource", "Extern"]:
             if not os.path.exists(target_root): continue
             for root, dirs, files in os.walk(target_root):
@@ -62,11 +139,9 @@ jobs:
                     content = content.replace("typedef unsigned long DWORD;", "typedef uint32_t DWORD;")
                     content = content.replace("typedef unsigned long       DWORD;", "typedef uint32_t DWORD;")
 
-                    # windows.h icindeki HANDLE tipini void* ile esitle
                     if fname.lower() == "windows.h":
                         content = re.sub(r"typedef\s+int\s+HANDLE\s*;", "typedef void* HANDLE;", content)
 
-                    # EterBase/StdAfx.h icinde windows.h ile cakisan HANDLE, RECT, POINT tanimlarini devre disi birak
                     if fname.lower() == "stdafx.h" and "eterbase" in root.lower():
                         content = re.sub(r"typedef\s+void\s*\*\s*HANDLE\s*;", "// typedef void* HANDLE;", content)
                         content = re.sub(r"typedef\s+struct\s*\{[^}]*left[^}]*\}\s*RECT\s*;", "// RECT defined in windows.h", content)
@@ -74,14 +149,19 @@ jobs:
 
                     if fname.lower() == "utils.h":
                         content = "#ifndef PCHAR_DEFINED\n#define PCHAR_DEFINED\ntypedef char* PCHAR;\n#endif\n" + content
-                        content = re.sub(r"(?<!typename\s)\bC::const_iterator\b", "typename C::const_iterator", content)
+
+                    # Stl.h ve diger basliklardaki eksik typename ifadelerini otomatik ekle
+                    content = re.sub(
+                        r"(?<!typename\s)\b((?:std::(?:vector|list|map|set|deque)\s*<[^>]+>|TContainer|T|C)::(?:const_iterator|iterator|value_type|reference|reverse_iterator))\b",
+                        r"typename \1",
+                        content
+                    )
 
                     if content != orig:
                         with open(fpath, "w", encoding="latin-1") as f:
                             f.write(content)
 
-        # GrpOpenGL.h: windows.h icinde ZATEN tanimli olan RECT, PALETTEENTRY, D3DFORMAT, D3DPOOL, D3DXIMAGE_INFO, _D3DVIEWPORT8
-        # tiplerini tekrar tanimlamadan (cakisma olmadan) olusturuyoruz.
+        # 3. GrpOpenGL.h ve GrpOpenGL.cpp temiz yapi
         clean_grp_opengl_h = '''#pragma once
         #ifdef ANDROID
             #include <GLES2/gl2.h>
@@ -1174,7 +1254,7 @@ jobs:
                 HRESULT DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT StartVertex, UINT PrimitiveCount) { return S_OK; }
                 HRESULT DrawPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT PrimitiveCount, const void* pVertexStreamZeroData, UINT VertexStreamZeroStride) { return S_OK; }
                 HRESULT SetTextureStageState(DWORD stage, D3DTEXTURESTAGESTATETYPE type, DWORD value) { return S_OK; }
-                HRESULT GetTextureStageState(DWORD stage, D3DTEXTURESTAGESTAGESTATETYPE type, DWORD* pValue) { if (pValue) *pValue = 0; return S_OK; }
+                HRESULT GetTextureStageState(DWORD stage, D3DTEXTURESTAGESTATETYPE type, DWORD* pValue) { if (pValue) *pValue = 0; return S_OK; }
                 HRESULT SetRenderState(DWORD Type, DWORD Value) { return S_OK; }
                 HRESULT GetRenderState(DWORD Type, DWORD* pValue) { if (pValue) *pValue = 0; return S_OK; }
                 HRESULT SetTexture(DWORD stage, LPDIRECT3DBaseTexture8 tex) { return S_OK; }
@@ -1286,8 +1366,6 @@ jobs:
         #endif
         '''
 
-        clean_grp_opengl_h = clean_grp_opengl_h.replace("D3DTEXTURESTAGESTAGESTATETYPE", "D3DTEXTURESTAGESTATETYPE")
-
         clean_grp_opengl_cpp = '''#include "StdAfx.h"
         #include "GrpOpenGL.h"
         #ifdef ENABLE_OPENGL
@@ -1304,7 +1382,7 @@ jobs:
                     with open(os.path.join(root, fname), "w", encoding="latin-1") as f:
                         f.write(clean_grp_opengl_cpp)
 
-        # Sistem C/C++ basliklariyla cakisan dosya isimlerine (locale.h, time.h vb.) kisayol olusturma!
+        # 4. Sistem C/C++ basliklariyla cakisan dosya isimlerine (locale.h, time.h vb.) kisayol olusturma
         sys_headers = {
             "locale.h", "time.h", "math.h", "string.h", "ctype.h", "stdio.h", "stdlib.h",
             "stdint.h", "assert.h", "errno.h", "fcntl.h", "float.h", "inttypes.h", "limits.h",
