@@ -110,7 +110,7 @@ jobs:
                 with open(cf_path, "w", encoding="latin-1") as f:
                     f.write(cf_body)
 
-        # 2. clientsource ve Extern icindeki tum dosyalarda uyumsuzluklari ve eksik typename'leri duzelt
+        # 2. clientsource ve Extern icindeki tum dosyalarda uyumsuzluklari duzelt
         for target_root in ["clientsource", "Extern"]:
             if not os.path.exists(target_root): continue
             for root, dirs, files in os.walk(target_root):
@@ -133,24 +133,59 @@ jobs:
 
                     content = re.sub(r"(#\s*include\s*[\"<])([^\"<>]+)([\">])", fix_includes, content)
 
+                    # a) Granny 64-bit kilidini devre disi birak
                     if fname.lower() == "granny.h":
                         content = re.sub(r"GrannyTypeSizeCheck\s*\([^;]+\)\s*;", "// GrannyTypeSizeCheck disabled", content)
+
+                    # b) LZO kutuphanesindeki (lzodefs.h / lzoconf.h) boyut ve konfigurasyon kilitlerini devre disi birak
+                    if fname.lower() in ["lzodefs.h", "lzoconf.h"]:
+                        content = "#undef _WIN32\n#undef WIN32\n#undef __WIN32__\n" + content
+                        content = re.sub(r"^\s*#\s*error\b.*", "// #error disabled", content, flags=re.MULTILINE)
+                        content = re.sub(r"LZO_COMPILE_TIME_ASSERT_HEADER\s*\([^)]+\)", "/* lzo assert disabled */", content)
+
+                    # c) Python2 icindeki bitset.h ve grammar.h dosyalarinda std::bitset ile yasanan isim cakismasini coz
+                    if "python2" in root.lower() and fname.lower() in ["bitset.h", "grammar.h"]:
+                        content = re.sub(r"(?<!\.)\bbitset\b(?!\.h)", "py_bitset", content)
 
                     content = content.replace("typedef unsigned long DWORD;", "typedef uint32_t DWORD;")
                     content = content.replace("typedef unsigned long       DWORD;", "typedef uint32_t DWORD;")
 
+                    # d) windows.h icine VOID ve diger eksik temel Windows makrolarini ekle
                     if fname.lower() == "windows.h":
                         content = re.sub(r"typedef\s+int\s+HANDLE\s*;", "typedef void* HANDLE;", content)
+                        win_extras = """
+        #ifndef VOID
+        #define VOID void
+        typedef char CHAR;
+        typedef short SHORT;
+        typedef long LONG;
+        typedef unsigned char UCHAR;
+        typedef unsigned short USHORT;
+        typedef void* PVOID;
+        typedef void* LPVOID;
+        typedef const void* LPCVOID;
+        typedef char* PCHAR;
+        typedef char* LPSTR;
+        typedef const char* LPCSTR;
+        typedef void* HMONITOR;
+        #endif
+        """
+                        content = content + "\n" + win_extras
 
+                    # e) EterBase/StdAfx.h icinde VOID tanimini garantiye al ve cakismalari onle
                     if fname.lower() == "stdafx.h" and "eterbase" in root.lower():
+                        content = "#ifndef VOID\n#define VOID void\n#endif\n" + content
                         content = re.sub(r"typedef\s+void\s*\*\s*HANDLE\s*;", "// typedef void* HANDLE;", content)
                         content = re.sub(r"typedef\s+struct\s*\{[^}]*left[^}]*\}\s*RECT\s*;", "// RECT defined in windows.h", content)
                         content = re.sub(r"typedef\s+struct\s*\{[^}]*LONG\s+x[^}]*\}\s*POINT\s*;", "// POINT defined in windows.h", content)
 
+                    if fname.lower() in ["timer.h", "pythonlauncher.h"]:
+                        content = "#ifndef VOID\n#define VOID void\n#endif\n" + content
+
                     if fname.lower() == "utils.h":
                         content = "#ifndef PCHAR_DEFINED\n#define PCHAR_DEFINED\ntypedef char* PCHAR;\n#endif\n" + content
 
-                    # Stl.h ve diger basliklardaki eksik typename ifadelerini otomatik ekle
+                    # f) Stl.h ve diger basliklardaki eksik typename ifadelerini otomatik ekle
                     content = re.sub(
                         r"(?<!typename\s)\b((?:std::(?:vector|list|map|set|deque)\s*<[^>]+>|TContainer|T|C)::(?:const_iterator|iterator|value_type|reference|reverse_iterator))\b",
                         r"typename \1",
@@ -177,6 +212,9 @@ jobs:
         #include <vector>
         #include "../android_compat/windows.h"
 
+        #ifndef VOID
+        #define VOID void
+        #endif
         #ifndef HRESULT
         typedef long HRESULT;
         #endif
