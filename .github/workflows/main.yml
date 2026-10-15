@@ -61,17 +61,16 @@ jobs:
 
                     content = content.replace("typedef unsigned long DWORD;", "typedef uint32_t DWORD;")
                     content = content.replace("typedef unsigned long       DWORD;", "typedef uint32_t DWORD;")
-                    if fname.lower() in ["stdafx.h", "windows.h"]:
-                        content = re.sub(
-                            r"typedef\s+struct\s*(?:tagRECT|RECT|_RECT)?\s*\{[^}]*left[^}]*\}\s*RECT\s*;",
-                            "#ifndef RECT_DEFINED\n#define RECT_DEFINED\ntypedef struct tagRECT { LONG left; LONG top; LONG right; LONG bottom; } RECT, *PRECT, *LPRECT;\n#endif",
-                            content
-                        )
-                        content = re.sub(
-                            r"typedef\s+struct\s*(?:_PALETTEENTRY)?\s*\{[^}]*peRed[^}]*\}\s*PALETTEENTRY\s*;",
-                            "#ifndef PALETTEENTRY_DEFINED\n#define PALETTEENTRY_DEFINED\ntypedef struct _PALETTEENTRY { BYTE peRed; BYTE peGreen; BYTE peBlue; BYTE peFlags; } PALETTEENTRY;\n#endif",
-                            content
-                        )
+
+                    # windows.h icindeki HANDLE tipini void* ile esitle
+                    if fname.lower() == "windows.h":
+                        content = re.sub(r"typedef\s+int\s+HANDLE\s*;", "typedef void* HANDLE;", content)
+
+                    # EterBase/StdAfx.h icinde windows.h ile cakisan HANDLE, RECT, POINT tanimlarini devre disi birak
+                    if fname.lower() == "stdafx.h" and "eterbase" in root.lower():
+                        content = re.sub(r"typedef\s+void\s*\*\s*HANDLE\s*;", "// typedef void* HANDLE;", content)
+                        content = re.sub(r"typedef\s+struct\s*\{[^}]*left[^}]*\}\s*RECT\s*;", "// RECT defined in windows.h", content)
+                        content = re.sub(r"typedef\s+struct\s*\{[^}]*LONG\s+x[^}]*\}\s*POINT\s*;", "// POINT defined in windows.h", content)
 
                     if fname.lower() == "utils.h":
                         content = "#ifndef PCHAR_DEFINED\n#define PCHAR_DEFINED\ntypedef char* PCHAR;\n#endif\n" + content
@@ -81,6 +80,8 @@ jobs:
                         with open(fpath, "w", encoding="latin-1") as f:
                             f.write(content)
 
+        # GrpOpenGL.h: windows.h icinde ZATEN tanimli olan RECT, PALETTEENTRY, D3DFORMAT, D3DPOOL, D3DXIMAGE_INFO, _D3DVIEWPORT8
+        # tiplerini tekrar tanimlamadan (cakisma olmadan) olusturuyoruz.
         clean_grp_opengl_h = '''#pragma once
         #ifdef ANDROID
             #include <GLES2/gl2.h>
@@ -127,6 +128,7 @@ jobs:
         typedef void* HWND;
         typedef void* HDC;
         typedef void* HGLRC;
+        typedef void* HMONITOR;
 
         #ifndef CONST
         #define CONST const
@@ -138,17 +140,8 @@ jobs:
         #define FALSE 0
         #endif
 
-        #ifndef RECT_DEFINED
-        #define RECT_DEFINED
-        typedef struct tagRECT { LONG left; LONG top; LONG right; LONG bottom; } RECT, *PRECT, *LPRECT;
-        #endif
-
-        #ifndef PALETTEENTRY_DEFINED
-        #define PALETTEENTRY_DEFINED
-        typedef struct _PALETTEENTRY { BYTE peRed; BYTE peGreen; BYTE peBlue; BYTE peFlags; } PALETTEENTRY;
-        #endif
-
-        typedef int D3DFORMAT;
+        typedef uint32_t D3DFORMAT;
+        typedef uint32_t D3DPOOL;
         typedef int D3DPRIMITIVETYPE;
         typedef int D3DDEVTYPE;
         typedef int D3DTEXTUREOP;
@@ -159,7 +152,6 @@ jobs:
         typedef int D3DCULL;
         typedef int D3DRENDERSTATETYPE;
         typedef int D3DCOLORVALUE;
-        typedef int D3DPOOL;
         typedef int D3DMULTISAMPLE_TYPE;
         typedef int D3DTRANSFORMSTATETYPE;
         typedef int D3DBACKBUFFER_TYPE;
@@ -545,19 +537,6 @@ jobs:
         #define D3DSHADER_VERSION_MINOR(_Version) (((_Version) >> 0) & 0xFF)
         #define D3D_SDK_VERSION 220
 
-        #ifndef D3DXIMAGE_INFO_DEFINED
-        #define D3DXIMAGE_INFO_DEFINED
-        struct D3DXIMAGE_INFO {
-            UINT Width;
-            UINT Height;
-            UINT Depth;
-            UINT MipLevels;
-            int Format;
-            int ResourceType;
-            int ImageFileFormat;
-        };
-        #endif
-
         struct GLMATRIX {
             union {
                 struct {
@@ -655,15 +634,6 @@ jobs:
             operator float*() { return &a; }
             operator const float*() const { return &a; }
         };
-
-        #ifndef D3DVIEWPORT8_DEFINED
-        #define D3DVIEWPORT8_DEFINED
-        struct _D3DVIEWPORT8 {
-            DWORD X, Y, Width, Height;
-            float MinZ, MaxZ;
-        };
-        typedef struct _D3DVIEWPORT8 D3DVIEWPORT8;
-        #endif
 
         struct D3DADAPTER_IDENTIFIER8 {
             char Driver[512];
@@ -1204,7 +1174,7 @@ jobs:
                 HRESULT DrawPrimitive(D3DPRIMITIVETYPE PrimitiveType, UINT StartVertex, UINT PrimitiveCount) { return S_OK; }
                 HRESULT DrawPrimitiveUP(D3DPRIMITIVETYPE PrimitiveType, UINT PrimitiveCount, const void* pVertexStreamZeroData, UINT VertexStreamZeroStride) { return S_OK; }
                 HRESULT SetTextureStageState(DWORD stage, D3DTEXTURESTAGESTATETYPE type, DWORD value) { return S_OK; }
-                HRESULT GetTextureStageState(DWORD stage, D3DTEXTURESTAGESTATETYPE type, DWORD* pValue) { if (pValue) *pValue = 0; return S_OK; }
+                HRESULT GetTextureStageState(DWORD stage, D3DTEXTURESTAGESTAGESTATETYPE type, DWORD* pValue) { if (pValue) *pValue = 0; return S_OK; }
                 HRESULT SetRenderState(DWORD Type, DWORD Value) { return S_OK; }
                 HRESULT GetRenderState(DWORD Type, DWORD* pValue) { if (pValue) *pValue = 0; return S_OK; }
                 HRESULT SetTexture(DWORD stage, LPDIRECT3DBaseTexture8 tex) { return S_OK; }
@@ -1316,6 +1286,8 @@ jobs:
         #endif
         '''
 
+        clean_grp_opengl_h = clean_grp_opengl_h.replace("D3DTEXTURESTAGESTAGESTATETYPE", "D3DTEXTURESTAGESTATETYPE")
+
         clean_grp_opengl_cpp = '''#include "StdAfx.h"
         #include "GrpOpenGL.h"
         #ifdef ENABLE_OPENGL
@@ -1332,16 +1304,38 @@ jobs:
                     with open(os.path.join(root, fname), "w", encoding="latin-1") as f:
                         f.write(clean_grp_opengl_cpp)
 
+        # Sistem C/C++ basliklariyla cakisan dosya isimlerine (locale.h, time.h vb.) kisayol olusturma!
+        sys_headers = {
+            "locale.h", "time.h", "math.h", "string.h", "ctype.h", "stdio.h", "stdlib.h",
+            "stdint.h", "assert.h", "errno.h", "fcntl.h", "float.h", "inttypes.h", "limits.h",
+            "malloc.h", "memory.h", "pthread.h", "sched.h", "search.h", "semaphore.h",
+            "setjmp.h", "signal.h", "stdarg.h", "stdbool.h", "stddef.h", "strings.h",
+            "tgmath.h", "uchar.h", "unistd.h", "utime.h", "wchar.h", "wctype.h"
+        }
+
         for target in ["clientsource", "Extern"]:
             if not os.path.exists(target): continue
             for root, dirs, files in os.walk(target, topdown=False):
-                for name in files + dirs:
+                for name in dirs:
                     variants = {
                         name.lower(),
                         name[0].lower() + name[1:] if len(name) > 1 else name.lower(),
                         name.replace("PRTerrainLib", "prTerrainLib").replace("CWebBrowser", "cWebBrowser")
                     }
                     for var in variants:
+                        if name != var and not os.path.exists(os.path.join(root, var)):
+                            try: os.symlink(name, os.path.join(root, var))
+                            except: pass
+                for name in files:
+                    if name.lower() in sys_headers:
+                        continue
+                    variants = {
+                        name.lower(),
+                        name[0].lower() + name[1:] if len(name) > 1 else name.lower()
+                    }
+                    for var in variants:
+                        if var.lower() in sys_headers:
+                            continue
                         if name != var and not os.path.exists(os.path.join(root, var)):
                             try: os.symlink(name, os.path.join(root, var))
                             except: pass
