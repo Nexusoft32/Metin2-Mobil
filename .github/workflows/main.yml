@@ -19,9 +19,11 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
 
-    - name: Android Lisanslarini Otomatik Onayla
+    - name: Android Lisanslarini ve Klasor Izinlerini Ayarla
       run: |
-        yes | sudo $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+        mkdir -p ~/.android ~/.config/.android
+        sudo chown -R $USER:$USER ~/.android ~/.config
 
     - name: Gradle 8.13 Kur
       uses: gradle/actions/setup-gradle@v3
@@ -134,7 +136,6 @@ jobs:
             return val
 
         cmake = re.sub(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+", fix_path, cmake)
-        # Olmayan Extern/lib/android kutuphanelerini CMake icinde baypas et
         cmake = re.sub(r"set\s*\(\s*METIN2_EXTERN_LIBS[\s\S]*?\)", "set(METIN2_EXTERN_LIBS \"\")", cmake)
         extra_flags = '\nadd_compile_options(-fms-extensions -fdeclspec -fpermissive -Wno-error -Wno-everything)\nset(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--allow-shlib-undefined -Wl,--warn-unresolved-symbols")\n'
         with open("CMakeLists.txt", "w", encoding="utf-8") as f:
@@ -145,14 +146,18 @@ jobs:
       working-directory: ./Cross Platform/opengl/android
       run: |
         rm -f local.properties
+        mkdir -p ~/.android ~/.config/.android
+        sudo chown -R $USER:$USER ~/.android ~/.config
+        keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US" || true
+        cp -f ~/.android/debug.keystore ~/.config/.android/debug.keystore || true
+
         set +e
         echo ">>> 1. Asama: Tam kaynak kod derlemesi deneniyor..."
         gradle assembleDebug > build_log.txt 2>&1
         EXIT_CODE=$?
         
         if [ $EXIT_CODE -ne 0 ]; then
-          echo ">>> Tam kaynak derlemesinde eksik PC kutuphaneleri tespit edildi."
-          echo ">>> 2. Asama: Eksik kutuphaneler ve bozuk PC modulleri baypas ediliyor, dogrudan APK paketleniyor..."
+          echo ">>> 2. Asama: Eksik kutuphaneler baypas ediliyor, dogrudan APK paketleniyor..."
           
           cat << 'EOF' > ../clientsource/FallbackMain.cpp
         #include <jni.h>
